@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "PAL9P7oiMow=",
+  "success": true,
+  "projectFilePath": "C:\\Users\\thultz\\source\\repos\\REPO_UTILS\\REPO_UTILS\\REPO_UTILS.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\thultz\\.nuget\\packages\\netstandard.library.ref\\2.1.0\\netstandard.library.ref.2.1.0.nupkg.sha512"
+  ],
+  "logs": []
+}
