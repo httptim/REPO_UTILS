@@ -27,12 +27,11 @@ namespace REPO_UTILS
         // Store original values for restoring when god mode is turned off
         private Dictionary<string, object> _originalValues = new Dictionary<string, object>();
 
-        // Cache for Inventory component
-        private MonoBehaviour _inventoryComponent;
-
         public PlayerManager(Core core)
         {
             _core = core;
+            FindPlayerComponents();
+            FindOtherPlayers();
         }
 
         public void Initialize(Transform playerAvatar, Transform playerController)
@@ -41,7 +40,6 @@ namespace REPO_UTILS
             _playerController = playerController;
             FindPlayerComponents();
             FindOtherPlayers();
-            CacheInventoryComponent(); // Try to find Inventory component on init
         }
 
         public void Reset()
@@ -57,7 +55,6 @@ namespace REPO_UTILS
             _playerHealthComponents.Clear();
             _staminaFields.Clear();
             _originalValues.Clear();
-            _inventoryComponent = null; // Clear cached inventory component
         }
 
         public void OnApplicationQuit()
@@ -646,171 +643,6 @@ namespace REPO_UTILS
         public List<Transform> GetOtherPlayers()
         {
             return _otherPlayers;
-        }
-
-        private void CacheInventoryComponent()
-        {
-            if (_playerController != null)
-            {
-                // Assuming Inventory is on the same GameObject as PlayerMovement/Health/Stamina
-                _inventoryComponent = _playerController.GetComponent("Inventory") as MonoBehaviour;
-                if (_inventoryComponent == null)
-                {
-                    MelonLogger.Warning("Inventory component not found on Player Avatar Controller.");
-                    // Alternative search if needed:
-                    // GameObject playerRoot = GameObject.Find("Player");
-                    // if (playerRoot != null)
-                    // {
-                    //     Transform controllerChild = playerRoot.transform.Find("Controller");
-                    //     if (controllerChild != null)
-                    //         _inventoryComponent = controllerChild.GetComponent("Inventory") as MonoBehaviour;
-                    // }
-                }
-
-                if (_inventoryComponent != null)
-                    MelonLogger.Msg("Inventory component cached successfully.");
-                else
-                    MelonLogger.Warning("Failed to cache Inventory component.");
-            }
-        }
-
-        public void GiveTranqGun()
-        {
-            MelonLogger.Msg("Attempting to give Tranquilizer Gun...");
-
-            if (_inventoryComponent == null)
-            {
-                MelonLogger.Error("Cannot give gun: Inventory component not found/cached.");
-                // Attempt to re-cache it just in case
-                CacheInventoryComponent();
-                if (_inventoryComponent == null)
-                    return;
-            }
-
-            try
-            {
-                // 1. Get the inventorySpots list
-                FieldInfo inventorySpotsField = _inventoryComponent.GetType().GetField("inventorySpots", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                if (inventorySpotsField == null)
-                {
-                    MelonLogger.Error("Cannot give gun: 'inventorySpots' field not found on Inventory component.");
-                    return;
-                }
-
-                object inventorySpotsListObj = inventorySpotsField.GetValue(_inventoryComponent);
-                if (inventorySpotsListObj == null || !(inventorySpotsListObj is System.Collections.IList inventorySpotsList) || inventorySpotsList.Count == 0)
-                {
-                    MelonLogger.Error("Cannot give gun: 'inventorySpots' list is null, empty, or not an IList.");
-                    return;
-                }
-
-                // 2. Get the first InventorySpot (index 0)
-                if (inventorySpotsList.Count < 1)
-                {
-                     MelonLogger.Error("Cannot give gun: Inventory has no slots.");
-                     return;
-                }
-                object inventorySpot = inventorySpotsList[0];
-                if (inventorySpot == null)
-                {
-                    MelonLogger.Error("Cannot give gun: Inventory spot 0 is null.");
-                    return;
-                }
-
-                // --- CRUCIAL PART: Getting the 'Item Gun Tranq' instance --- 
-                // This is highly speculative and likely needs adjustment based on how the game works.
-
-                object tranqGunItem = FindOrCreateTranqGunItem(); // Helper function (needs implementation)
-
-                if (tranqGunItem == null)
-                {
-                    MelonLogger.Error("Cannot give gun: Failed to find or create 'Item Gun Tranq'.");
-                    return;
-                }
-                // -----------------------------------------------------------
-
-                // 3. Assign the item to the slot
-                // Try finding an AddItem/SetItem method first (Preferred)
-                 MethodInfo setItemMethod = inventorySpot.GetType().GetMethod("SetItem", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                 // Add other potential method names: AddItem, ForceSetItem, EquipItem etc.
-
-                if (setItemMethod != null && setItemMethod.GetParameters().Length == 1) // Example: Check for a method that takes one argument (the item)
-                {
-                    MelonLogger.Msg("Attempting to set item using SetItem method...");
-                     setItemMethod.Invoke(inventorySpot, new object[] { tranqGunItem });
-                     MelonLogger.Msg("Successfully called SetItem (check in-game results).");
-                }
-                else
-                {
-                     MelonLogger.Warning("SetItem method not found or invalid parameters. Attempting direct field/property access...");
-                     // Fallback: Try setting the CurrentItem property or backing field
-                     PropertyInfo currentItemProp = inventorySpot.GetType().GetProperty("CurrentItem", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                     if (currentItemProp != null && currentItemProp.CanWrite)
-                     {
-                         MelonLogger.Msg("Attempting to set CurrentItem property...");
-                         currentItemProp.SetValue(inventorySpot, tranqGunItem);
-                         MelonLogger.Msg("Successfully set CurrentItem property (check in-game results).");
-                     }
-                     else
-                     {
-                         MelonLogger.Warning("CurrentItem property not found or not writeable. Attempting backing field...");
-                         FieldInfo currentItemBackingField = inventorySpot.GetType().GetField("<CurrentItem>k__BackingField", BindingFlags.NonPublic | BindingFlags.Instance);
-                         if (currentItemBackingField != null)
-                         {
-                             MelonLogger.Msg("Attempting to set <CurrentItem>k__BackingField...");
-                             currentItemBackingField.SetValue(inventorySpot, tranqGunItem);
-                             MelonLogger.Msg("Successfully set <CurrentItem>k__BackingField (check in-game results).");
-                         }
-                         else
-                         {
-                             MelonLogger.Error("Failed to assign item: Neither SetItem method, CurrentItem property, nor backing field could be used.");
-                         }
-                     }
-                }
-            }
-            catch (Exception ex)
-            {
-                MelonLogger.Error($"Error in GiveTranqGun: {ex.GetType().Name} - {ex.Message}\n{ex.StackTrace}");
-            }
-        }
-
-        // --- Placeholder Helper Function --- 
-        // This needs proper implementation based on game specifics.
-        private object FindOrCreateTranqGunItem()
-        {
-            MelonLogger.Msg("Executing placeholder FindOrCreateTranqGunItem...");
-
-            // Option 1: Look for an Item Manager (BEST)
-            // Example: Find component and call a method
-            /*
-            var itemManager = GameObject.FindObjectOfType<SpecificItemManagerType>();
-            if (itemManager != null)
-            {
-                 return itemManager.GetItemByName("Item Gun Tranq"); // Or GetItemByID, InstantiateItem, etc.
-            }
-            */
-
-            // Option 2: Search for existing item instance and clone (Less Reliable)
-            /*
-            ItemEquippable[] allItems = Resources.FindObjectsOfTypeAll<ItemEquippable>(); // Replace ItemEquippable with actual type if known
-            foreach (var item in allItems)
-            {
-                if (item.name.Contains("Gun Tranq")) // Check name or other properties
-                {
-                     MelonLogger.Msg($"Found existing item: {item.name}. Cloning...");
-                     return GameObject.Instantiate(item.gameObject); // Clone the GameObject; might need component reference
-                }
-            }
-            */
-
-            // Option 3: If item is a simple ScriptableObject in Resources (Unlikely for complex items)
-            /*
-            var itemAsset = Resources.Load("Path/To/Item Gun Tranq");
-            return itemAsset;
-            */
-
-            MelonLogger.Warning("FindOrCreateTranqGunItem: No valid method found in placeholder. Returning null.");
-            return null; // Indicate failure
         }
     }
 }
