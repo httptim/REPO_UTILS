@@ -149,6 +149,12 @@ namespace REPO_UTILS
             {
                  _core.PlayerManager.ReviveSelf();
             }
+
+            // Cheap button (New)
+            if (GUI.Button(new Rect(x + 220, y + 100, 60, 20), "Cheap")) // Positioned next to Revive Self
+            {
+                 _core.MakeAllItemsCheap();
+            }
         }
 
         private void DrawPlayerSection(float baseX, float baseY, float currentY, float sectionHeight)
@@ -196,8 +202,8 @@ namespace REPO_UTILS
             GUI.Label(new Rect(baseX + 10, baseY + currentY, 200, 20),
                      $"Items: (Total Value: ${totalValue:N0})");
 
-            // Add Max Value button next to the label (Changed text to "Max")
-            if (GUI.Button(new Rect(baseX + 215, baseY + currentY, 80, 20), "Max"))
+            // Adjusted position and size for "Max" button
+            if (GUI.Button(new Rect(baseX + 215, baseY + currentY, 50, 20), "Max")) // Reduced width
             {
                  _core.MaxValueClosestItem();
             }

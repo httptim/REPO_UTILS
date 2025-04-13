@@ -374,6 +374,72 @@ namespace REPO_UTILS
             }
         }
 
+        // New method to set all item values to 1
+        public void MakeAllItemsCheap()
+        {
+            MelonLogger.Msg("Attempting to make all items cheap (value=1)...");
+
+            GameObject levelGenerator = GameObject.Find("Level Generator");
+            if (levelGenerator == null)
+            {
+                MelonLogger.Error("Could not find 'Level Generator' GameObject.");
+                return;
+            }
+
+            Transform itemsParent = levelGenerator.transform.Find("Items");
+            if (itemsParent == null)
+            {
+                MelonLogger.Error("Could not find 'Items' child transform under 'Level Generator'.");
+                return;
+            }
+
+            int itemsProcessed = 0;
+            int itemsModified = 0;
+            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+            foreach (Transform itemChild in itemsParent)
+            {
+                itemsProcessed++;
+                if (itemChild == null) continue;
+
+                // Get the ItemAttributes component
+                MonoBehaviour itemAttributes = itemChild.GetComponent("ItemAttributes") as MonoBehaviour;
+                if (itemAttributes == null)
+                {
+                    // MelonLogger.Warning($"Item '{itemChild.name}' does not have an ItemAttributes component. Skipping.");
+                    continue; // Skip if component not found
+                }
+
+                // Find the 'value' field
+                FieldInfo valueField = itemAttributes.GetType().GetField("value", flags);
+                if (valueField == null)
+                {
+                    // MelonLogger.Warning($"Could not find 'value' field on ItemAttributes for item '{itemChild.name}'. Skipping.");
+                    continue; // Skip if field not found
+                }
+
+                // Set the value to 1
+                try
+                {
+                    if (valueField.FieldType == typeof(int))
+                    {
+                        valueField.SetValue(itemAttributes, 1);
+                        itemsModified++;
+                    }
+                    else
+                    {
+                        // MelonLogger.Warning($"Value field on '{itemChild.name}' is not an int ({valueField.FieldType}). Skipping.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Error($"Failed to set value for item '{itemChild.name}': {ex.Message}");
+                }
+            }
+
+            MelonLogger.Msg($"Cheap items process complete. Processed: {itemsProcessed}, Modified: {itemsModified}.");
+        }
+
         #endregion
 
         #region Getters

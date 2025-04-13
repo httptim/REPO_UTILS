@@ -245,6 +245,12 @@ namespace REPO_UTILS
              ItemManager.MaxValueClosestItem();
         }
 
+        // New method to trigger making all items cheap
+        public void MakeAllItemsCheap()
+        {
+            ItemManager.MakeAllItemsCheap(); // Delegate to ItemManager
+        }
+
         #endregion
     }
 }
