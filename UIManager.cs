@@ -62,7 +62,7 @@ namespace REPO_UTILS
         public void DrawGUI()
         {
             // Calculate dynamic heights based on what's shown
-            float toggleSectionHeight = 100f; // Reduced height after removing speed slider
+            float toggleSectionHeight = 150f; // Increased height for Heal/Revive/Extract/Cheap buttons
             float playerSectionHeight = _showPlayerList ? 200f : 25f;
             float enemySectionHeight = _showEnemyList ? 170f : 25f;
             float itemSectionHeight = _showItemList ? 170f : 25f;
@@ -138,7 +138,29 @@ namespace REPO_UTILS
             }
             GUI.Label(new Rect(x + 160, y + 75, 80, 20), "(P)");
 
-            // Speed slider removed
+            // Heal Self button
+            if (GUI.Button(new Rect(x, y + 100, 100, 20), "Heal Self"))
+            {
+                 _core.PlayerManager.HealSelf();
+            }
+
+            // Revive Self button
+            if (GUI.Button(new Rect(x + 110, y + 100, 100, 20), "Revive Self"))
+            {
+                 _core.PlayerManager.ReviveSelf();
+            }
+
+            // Complete Extract button (New)
+            if (GUI.Button(new Rect(x, y + 125, 100, 20), "Complete")) // Positioned below Heal/Revive Self
+            {
+                _core.CompleteExtractionPoints();
+            }
+
+            // Cheap button
+            if (GUI.Button(new Rect(x + 110, y + 125, 60, 20), "Cheap")) // Adjusted position
+            {
+                 _core.MakeAllItemsCheap();
+            }
         }
 
         private void DrawPlayerSection(float baseX, float baseY, float currentY, float sectionHeight)
@@ -183,8 +205,14 @@ namespace REPO_UTILS
         {
             // Show total value in the items label
             float totalValue = _core.ItemManager.CalculateTotalItemValue();
-            GUI.Label(new Rect(baseX + 10, baseY + currentY, 280, 20),
+            GUI.Label(new Rect(baseX + 10, baseY + currentY, 200, 20),
                      $"Items: (Total Value: ${totalValue:N0})");
+
+            // Adjusted position and size for "Max" button
+            if (GUI.Button(new Rect(baseX + 215, baseY + currentY, 50, 20), "Max")) // Reduced width
+            {
+                 _core.MaxValueClosestItem();
+            }
 
             if (GUI.Button(new Rect(baseX + _mainWindowRect.width - 70, baseY + currentY, 60, 20),
                           _showItemList ? "Hide" : "Show"))
@@ -224,8 +252,9 @@ namespace REPO_UTILS
                 bool isAlive = _core.PlayerManager.IsPlayerAlive(i);
                 int playerHealth = _core.PlayerManager.GetPlayerHealth(i);
                 string statusText = isAlive ? "Alive" : "Dead";
+                string playerName = _core.PlayerManager.GetPlayerName(i); // Get player name
 
-                GUI.Label(new Rect(5, i * 30, 90, 20), $"Player {i + 1}");
+                GUI.Label(new Rect(5, i * 30, 90, 20), playerName); // Use player name
 
                 GUIStyle statusStyle = new GUIStyle(GUI.skin.label);
                 statusStyle.normal.textColor = isAlive ? Color.green : Color.red;
@@ -237,24 +266,17 @@ namespace REPO_UTILS
                 GUI.enabled = isAlive && playerHealth < 100;
                 if (GUI.Button(new Rect(210, i * 30, 40, 20), "Heal"))
                 {
-                    _core.PlayerManager.HealPlayer(i);
+                    _core.PlayerManager.HealOtherPlayer(i); // Call HealOtherPlayer
                 }
 
                 // Revive button - only enabled if player is dead
                 GUI.enabled = !isAlive;
                 if (GUI.Button(new Rect(255, i * 30, 50, 20), "Revive"))
                 {
-                    _core.PlayerManager.RevivePlayer(i);
+                    _core.PlayerManager.ReviveOtherPlayer(i); // Call ReviveOtherPlayer
                 }
 
-                // Kill button - only enabled if player is alive
-                GUI.enabled = isAlive;
-                if (GUI.Button(new Rect(310, i * 30, 40, 20), "Kill"))
-                {
-                    _core.PlayerManager.KillPlayer(i);
-                }
-
-                GUI.enabled = true;  // Reset enabled state
+                GUI.enabled = true; // Reset GUI enabled state
             }
 
             if (players.Count == 0)

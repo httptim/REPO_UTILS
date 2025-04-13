@@ -239,6 +239,24 @@ namespace REPO_UTILS
         // Helper to get player positions
         public Vector3 GetPlayerPosition() => playerController.position + new Vector3(0, 1f, 0);
 
+        // New method to trigger max value on closest item
+        public void MaxValueClosestItem()
+        {
+             ItemManager.MaxValueClosestItem();
+        }
+
+        // New method to trigger making all items cheap
+        public void MakeAllItemsCheap()
+        {
+            ItemManager.MakeAllItemsCheap(); // Delegate to ItemManager
+        }
+
+        // New method to trigger completing extraction points
+        public void CompleteExtractionPoints()
+        {
+            ItemManager.CompleteExtractionPoints(); // Delegate to ItemManager
+        }
+
         #endregion
     }
 }

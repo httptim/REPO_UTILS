@@ -30,6 +30,8 @@ namespace REPO_UTILS
         public PlayerManager(Core core)
         {
             _core = core;
+            FindPlayerComponents();
+            FindOtherPlayers();
         }
 
         public void Initialize(Transform playerAvatar, Transform playerController)
@@ -108,51 +110,40 @@ namespace REPO_UTILS
 
         private void FindOtherPlayers()
         {
+            _otherPlayers.Clear();
+            _playerAvatarComponents.Clear();
+            _playerHealthComponents.Clear();
+            ClearPlayerESP();
+
             GameObject[] allPlayerAvatars = GameObject.FindObjectsOfType<GameObject>()
-                .Where(go => go.name == "PlayerAvatar(Clone)" && go.transform.childCount == 10)
+                .Where(go => go.name == "PlayerAvatar(Clone)" && go.transform != _playerAvatar)
                 .ToArray();
 
             foreach (var playerObj in allPlayerAvatars)
             {
-                if (playerObj.transform == _playerAvatar) continue;
-
                 Transform playerTransform = playerObj.transform;
-                if (!_otherPlayers.Contains(playerTransform))
+                _otherPlayers.Add(playerTransform);
+
+                Transform otherPlayerController = playerTransform.Find("Player Avatar Controller");
+                MonoBehaviour healthComponent = null;
+                MonoBehaviour avatarComponent = null;
+
+                if (otherPlayerController != null)
                 {
-                    _otherPlayers.Add(playerTransform);
-
-                    Transform playerController = playerTransform.Find("Player Avatar Controller");
-                    if (playerController != null)
-                    {
-                        MonoBehaviour[] components = playerController.GetComponents<MonoBehaviour>();
-                        MonoBehaviour healthComponent = null;
-                        MonoBehaviour avatarComponent = null;
-
-                        foreach (var component in components)
-                        {
-                            string typeName = component.GetType().Name;
-                            if (typeName == "PlayerHealth")
-                            {
-                                healthComponent = component;
-                            }
-                            else if (typeName == "PlayerAvatar")
-                            {
-                                avatarComponent = component;
-                            }
-                        }
-
-                        _playerHealthComponents.Add(healthComponent);
-                        _playerAvatarComponents.Add(avatarComponent);
-                    }
-                    else
-                    {
-                        _playerHealthComponents.Add(null);
-                        _playerAvatarComponents.Add(null);
-                    }
-
-                    CreateLineRendererForPlayer(playerTransform);
+                    healthComponent = otherPlayerController.GetComponent("PlayerHealth") as MonoBehaviour;
+                    avatarComponent = otherPlayerController.GetComponent("PlayerAvatar") as MonoBehaviour;
                 }
+                else
+                {
+                    MelonLogger.Warning($"Could not find 'Player Avatar Controller' for player object: {playerObj.name}");
+                }
+
+                _playerHealthComponents.Add(healthComponent);
+                _playerAvatarComponents.Add(avatarComponent);
+
+                CreateLineRendererForPlayer(playerTransform);
             }
+            MelonLogger.Msg($"Found {_otherPlayers.Count} other players.");
         }
 
         public void OnUpdate()
@@ -247,14 +238,14 @@ namespace REPO_UTILS
                 {
                     if (component.GetType().Name == "PlayerController")
                     {
-                        // Store MoveSpeed
-                        FieldInfo moveSpeedField = component.GetType().GetField("MoveSpeed",
+                        // Store SprintSpeed
+                        FieldInfo sprintSpeedField = component.GetType().GetField("SprintSpeed",
                             BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                        if (moveSpeedField != null)
+                        if (sprintSpeedField != null)
                         {
                             try
                             {
-                                _originalValues["MoveSpeed"] = moveSpeedField.GetValue(component);
+                                _originalValues["SprintSpeed"] = sprintSpeedField.GetValue(component);
                             }
                             catch { }
                         }
@@ -302,13 +293,17 @@ namespace REPO_UTILS
                         {
                             try
                             {
-                                _originalValues["JumpExtraCurrent"] = jumpExtraField.GetValue(component);
+                                _originalValues["JumpExtraCurrent"] = jumpExtraField.GetValue(component); // Original code had a potential typo here: jumpExtraField instead of jumpExtraCurrentField
                             }
                             catch { }
                         }
+                        // Keep MelonLogger message if desired
+                        MelonLogger.Msg($"Stored original values from {component.GetType().Name}: {string.Join(", ", _originalValues.Keys)}");
+                        return; // Exit after finding the PlayerController
                     }
                 }
             }
+             if (_originalValues.Count == 0) MelonLogger.Warning("Could not find PlayerController component to store original values.");
         }
 
         private void RestoreOriginalValues()
@@ -335,92 +330,70 @@ namespace REPO_UTILS
                 {
                     if (component.GetType().Name == "PlayerController")
                     {
-                        // Restore MoveSpeed
-                        if (_originalValues.ContainsKey("MoveSpeed"))
+                        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+                        // Restore SprintSpeed
+                        if (_originalValues.ContainsKey("SprintSpeed"))
                         {
-                            FieldInfo moveSpeedField = component.GetType().GetField("MoveSpeed",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (moveSpeedField != null)
+                            FieldInfo sprintSpeedField = component.GetType().GetField("SprintSpeed", flags);
+                            if (sprintSpeedField != null)
                             {
-                                try
-                                {
-                                    moveSpeedField.SetValue(component, _originalValues["MoveSpeed"]);
-                                }
-                                catch { }
+                                try { sprintSpeedField.SetValue(component, _originalValues["SprintSpeed"]); } catch { }
                             }
                         }
 
                         // Restore EnergyCurrent
                         if (_originalValues.ContainsKey("EnergyCurrent"))
                         {
-                            FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent", flags);
                             if (energyCurrentField != null)
                             {
-                                try
-                                {
-                                    energyCurrentField.SetValue(component, _originalValues["EnergyCurrent"]);
-                                }
-                                catch { }
+                                try { energyCurrentField.SetValue(component, _originalValues["EnergyCurrent"]); } catch { }
                             }
                         }
 
                         // Restore EnergyStart
                         if (_originalValues.ContainsKey("EnergyStart"))
                         {
-                            FieldInfo energyStartField = component.GetType().GetField("EnergyStart",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            FieldInfo energyStartField = component.GetType().GetField("EnergyStart", flags);
                             if (energyStartField != null)
                             {
-                                try
-                                {
-                                    energyStartField.SetValue(component, _originalValues["EnergyStart"]);
-                                }
-                                catch { }
+                                try { energyStartField.SetValue(component, _originalValues["EnergyStart"]); } catch { }
                             }
                         }
 
                         // Restore JumpExtra
                         if (_originalValues.ContainsKey("JumpExtra"))
                         {
-                            FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra", flags);
                             if (jumpExtraField != null)
                             {
-                                try
-                                {
-                                    jumpExtraField.SetValue(component, _originalValues["JumpExtra"]);
-                                }
-                                catch { }
+                                try { jumpExtraField.SetValue(component, _originalValues["JumpExtra"]); } catch { }
                             }
                         }
 
                         // Restore JumpExtraCurrent
                         if (_originalValues.ContainsKey("JumpExtraCurrent"))
                         {
-                            FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                            FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent", flags);
                             if (jumpExtraCurrentField != null)
                             {
-                                try
-                                {
-                                    jumpExtraCurrentField.SetValue(component, _originalValues["JumpExtraCurrent"]);
-                                }
-                                catch { }
+                                try { jumpExtraCurrentField.SetValue(component, _originalValues["JumpExtraCurrent"]); } catch { }
                             }
                         }
+                         MelonLogger.Msg($"Restored original player values for {component.GetType().Name}.");
+                        return; // Exit after finding PlayerController
                     }
                 }
             }
-
-            MelonLogger.Msg("Restored original player values");
+            MelonLogger.Warning("Could not find PlayerController component to restore original values.");
         }
 
         private void ApplyGodModeEffects()
         {
             ApplyInfiniteStamina();
 
-            if (Time.frameCount % 300 == 0)
+            if (Time.frameCount % 300 == 0) // Check frame count to avoid running every frame
             {
                 UpdatePlayerControllerValues();
             }
@@ -430,44 +403,37 @@ namespace REPO_UTILS
         {
             string playerAvatarName = null;
 
-            MonoBehaviour[] avatarComponents = _playerController.GetComponents<MonoBehaviour>();
-            foreach (var component in avatarComponents)
-            {
-                FieldInfo playerNameField = component.GetType().GetField("playerName",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            // Attempt to get playerName from the local player's avatar components
+             if (_playerController != null) // Ensure _playerController is valid
+             {
+                 MonoBehaviour[] avatarComponents = _playerController.GetComponents<MonoBehaviour>();
+                 foreach (var component in avatarComponents)
+                 {
+                     // Check for Field first
+                     FieldInfo playerNameField = component.GetType().GetField("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                     if (playerNameField != null)
+                     {
+                         try { playerAvatarName = (string)playerNameField.GetValue(component); break; } catch { }
+                     }
+                     // Check for Property if field not found or failed
+                     if (playerAvatarName == null)
+                     {
+                         PropertyInfo playerNameProperty = component.GetType().GetProperty("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                         if (playerNameProperty != null && playerNameProperty.CanRead)
+                         {
+                            try { playerAvatarName = (string)playerNameProperty.GetValue(component, null); break; } catch { }
+                         }
+                     }
+                      if (playerAvatarName != null) break; // Exit loop once name is found
+                 }
+             }
 
-                if (playerNameField != null)
-                {
-                    try
-                    {
-                        playerAvatarName = (string)playerNameField.GetValue(component);
-                        break;
-                    }
-                    catch { }
-                }
-
-                PropertyInfo playerNameProperty = component.GetType().GetProperty("playerName",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                if (playerNameProperty != null && playerNameProperty.CanRead)
-                {
-                    try
-                    {
-                        playerAvatarName = (string)playerNameProperty.GetValue(component, null);
-                        break;
-                    }
-                    catch { }
-                }
-            }
-
+            // Find the PlayerController component and apply changes
             GameObject[] allPlayerObjects = GameObject.FindGameObjectsWithTag("Player");
             if (allPlayerObjects.Length == 0)
             {
                 GameObject playerObj = GameObject.Find("Player");
-                if (playerObj != null)
-                {
-                    allPlayerObjects = new GameObject[] { playerObj };
-                }
+                if (playerObj != null) allPlayerObjects = new GameObject[] { playerObj };
             }
 
             foreach (GameObject playerObj in allPlayerObjects)
@@ -478,326 +444,200 @@ namespace REPO_UTILS
                 MonoBehaviour[] components = controllerTransform.GetComponents<MonoBehaviour>();
                 foreach (var component in components)
                 {
-                    if (component.GetType().Name == "PlayerController")
+                    if (component.GetType().Name == "PlayerController") // Make sure this name is correct
                     {
-                        string controllerPlayerName = null;
-                        FieldInfo playerNameField = component.GetType().GetField("playerName",
-                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                        if (playerNameField != null)
+                        // Compare names if possible, otherwise apply to the first found controller
+                        bool applyChanges = true; // Default to true
+                        if (playerAvatarName != null) // Only compare if we successfully got local player name
                         {
-                            try
-                            {
-                                controllerPlayerName = (string)playerNameField.GetValue(component);
-                            }
-                            catch { }
+                            string controllerPlayerName = null;
+                             FieldInfo contPlayerNameField = component.GetType().GetField("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                             if (contPlayerNameField != null) try { controllerPlayerName = (string)contPlayerNameField.GetValue(component); } catch { }
+
+                            // If controller name doesn't match local name, don't apply (unless controller has no name field)
+                             if (controllerPlayerName != null && playerAvatarName != controllerPlayerName)
+                             {
+                                 applyChanges = false;
+                             }
                         }
 
-                        if ((playerAvatarName == null || controllerPlayerName == null || playerAvatarName == controllerPlayerName))
+                        if (applyChanges)
                         {
-                            // Directly set the MoveSpeed field to 10 (instead of 5)
-                            FieldInfo moveSpeedField = component.GetType().GetField("MoveSpeed",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (moveSpeedField != null)
-                            {
-                                try
-                                {
-                                    Type fieldType = moveSpeedField.FieldType;
+                             BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                            // Helper lambda to set value safely
+                            Action<FieldInfo, object> SetValueSafe = (field, value) => { try { field?.SetValue(component, value); } catch { } };
 
-                                    if (fieldType == typeof(int) || fieldType == typeof(Int32))
-                                    {
-                                        moveSpeedField.SetValue(component, 10);
-                                    }
-                                    else if (fieldType == typeof(float) || fieldType == typeof(Single))
-                                    {
-                                        moveSpeedField.SetValue(component, 10f);
-                                    }
-                                    else if (fieldType == typeof(double))
-                                    {
-                                        moveSpeedField.SetValue(component, 10.0);
-                                    }
-                                }
-                                catch { }
+                            // Set SprintSpeed to 8
+                            FieldInfo sprintSpeedField = component.GetType().GetField("SprintSpeed", flags);
+                            if (sprintSpeedField != null)
+                            {
+                                Type fieldType = sprintSpeedField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(sprintSpeedField, 8);
+                                else if (fieldType == typeof(float)) SetValueSafe(sprintSpeedField, 8f);
+                                else if (fieldType == typeof(double)) SetValueSafe(sprintSpeedField, 8.0);
                             }
 
-                            // Directly set EnergyCurrent
-                            FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (energyCurrentField != null)
+                            // Set EnergyCurrent to 100
+                            FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent", flags);
+                             if (energyCurrentField != null)
                             {
-                                try
-                                {
-                                    Type fieldType = energyCurrentField.FieldType;
-
-                                    if (fieldType == typeof(int) || fieldType == typeof(Int32))
-                                    {
-                                        energyCurrentField.SetValue(component, 9999);
-                                    }
-                                    else if (fieldType == typeof(float) || fieldType == typeof(Single))
-                                    {
-                                        energyCurrentField.SetValue(component, 9999f);
-                                    }
-                                    else if (fieldType == typeof(double))
-                                    {
-                                        energyCurrentField.SetValue(component, 9999.0);
-                                    }
-                                }
-                                catch { }
+                                Type fieldType = energyCurrentField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(energyCurrentField, 100);
+                                else if (fieldType == typeof(float)) SetValueSafe(energyCurrentField, 100f);
+                                else if (fieldType == typeof(double)) SetValueSafe(energyCurrentField, 100.0);
                             }
 
-                            // Directly set EnergyStart
-                            FieldInfo energyStartField = component.GetType().GetField("EnergyStart",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (energyStartField != null)
+                            // Set EnergyStart to 100
+                            FieldInfo energyStartField = component.GetType().GetField("EnergyStart", flags);
+                             if (energyStartField != null)
                             {
-                                try
-                                {
-                                    Type fieldType = energyStartField.FieldType;
-
-                                    if (fieldType == typeof(int) || fieldType == typeof(Int32))
-                                    {
-                                        energyStartField.SetValue(component, 9999);
-                                    }
-                                    else if (fieldType == typeof(float) || fieldType == typeof(Single))
-                                    {
-                                        energyStartField.SetValue(component, 9999f);
-                                    }
-                                    else if (fieldType == typeof(double))
-                                    {
-                                        energyStartField.SetValue(component, 9999.0);
-                                    }
-                                }
-                                catch { }
+                                Type fieldType = energyStartField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(energyStartField, 100);
+                                else if (fieldType == typeof(float)) SetValueSafe(energyStartField, 100f);
+                                else if (fieldType == typeof(double)) SetValueSafe(energyStartField, 100.0);
                             }
 
-                            // Directly set JumpExtra
-                            FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (jumpExtraField != null)
+                            // Set JumpExtra to 999
+                            FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra", flags);
+                             if (jumpExtraField != null)
                             {
-                                try
-                                {
-                                    Type fieldType = jumpExtraField.FieldType;
-
-                                    if (fieldType == typeof(int) || fieldType == typeof(Int32))
-                                    {
-                                        jumpExtraField.SetValue(component, 999);
-                                    }
-                                    else if (fieldType == typeof(float) || fieldType == typeof(Single))
-                                    {
-                                        jumpExtraField.SetValue(component, 999f);
-                                    }
-                                    else if (fieldType == typeof(double))
-                                    {
-                                        jumpExtraField.SetValue(component, 999.0);
-                                    }
-                                }
-                                catch { }
+                                Type fieldType = jumpExtraField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(jumpExtraField, 999);
+                                else if (fieldType == typeof(float)) SetValueSafe(jumpExtraField, 999f);
+                                else if (fieldType == typeof(double)) SetValueSafe(jumpExtraField, 999.0);
                             }
 
-                            // Directly set JumpExtraCurrent
-                            FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent",
-                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-                            if (jumpExtraCurrentField != null)
+                            // Set JumpExtraCurrent to 999
+                            FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent", flags);
+                             if (jumpExtraCurrentField != null)
                             {
-                                try
-                                {
-                                    Type fieldType = jumpExtraCurrentField.FieldType;
-
-                                    if (fieldType == typeof(int) || fieldType == typeof(Int32))
-                                    {
-                                        jumpExtraCurrentField.SetValue(component, 999);
-                                    }
-                                    else if (fieldType == typeof(float) || fieldType == typeof(Single))
-                                    {
-                                        jumpExtraCurrentField.SetValue(component, 999f);
-                                    }
-                                    else if (fieldType == typeof(double))
-                                    {
-                                        jumpExtraCurrentField.SetValue(component, 999.0);
-                                    }
-                                }
-                                catch { }
+                                Type fieldType = jumpExtraCurrentField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(jumpExtraCurrentField, 999);
+                                else if (fieldType == typeof(float)) SetValueSafe(jumpExtraCurrentField, 999f);
+                                else if (fieldType == typeof(double)) SetValueSafe(jumpExtraCurrentField, 999.0);
                             }
 
-                            return;
+                             // MelonLogger.Msg($"Applied god mode values to {component.GetType().Name}");
+                             return; // Assume only one PlayerController needs updating
                         }
                     }
                 }
             }
+            // MelonLogger.Warning("Could not find PlayerController component to apply god mode values.");
         }
 
         public void ApplyInfiniteStamina()
         {
             if (_playerStamina == null) return;
 
-            // Set EnergyCurrent to maximum
-            FieldInfo energyCurrentField = _staminaFields["EnergyCurrent"];
-            FieldInfo energyStartField = _staminaFields["EnergyStart"];
-
-            if (energyCurrentField != null && energyStartField != null)
+            // Set EnergyCurrent to maximum using cached fields
+             if (_staminaFields.TryGetValue("EnergyCurrent", out FieldInfo energyCurrentField) &&
+                 _staminaFields.TryGetValue("EnergyStart", out FieldInfo energyStartField))
             {
                 try
                 {
-                    // Get the max stamina value from EnergyStart field
                     object maxStaminaValue = energyStartField.GetValue(_playerStamina);
-
-                    // Set the current stamina to max
                     energyCurrentField.SetValue(_playerStamina, maxStaminaValue);
                 }
-                catch { }
+                catch (Exception ex)
+                 {
+                     MelonLogger.Error($"Error applying infinite stamina (setting current to start): {ex.Message}");
+                 }
+            }
+             else
+             {
+                 // Fallback or log warning if fields weren't cached
+                 MelonLogger.Warning("Cannot apply infinite stamina: EnergyCurrent or EnergyStart field info missing.");
+             }
+        }
+
+        public void HealSelf()
+        {
+            if (_playerHealth != null)
+            {
+                CallHealMethod(_playerHealth, 10, false);
+                 MelonLogger.Msg("Attempted to heal self.");
+            }
+             else
+            {
+                 MelonLogger.Warning("Cannot HealSelf: PlayerHealth component not found for local player.");
             }
         }
 
-        public void HealPlayer(int playerIndex)
+        public void ReviveSelf()
+        {
+             if (_playerHealth != null)
+            {
+                CallHealMethod(_playerHealth, 100, false); // Assuming large heal amount revives
+                 MelonLogger.Msg("Attempted to revive self.");
+            }
+             else
+            {
+                 MelonLogger.Warning("Cannot ReviveSelf: PlayerHealth component not found for local player.");
+            }
+        }
+
+        public void HealOtherPlayer(int playerIndex)
         {
             if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
+                MonoBehaviour targetHealth = _playerHealthComponents[playerIndex];
+                if (targetHealth != null)
                 {
-                    FieldInfo currentHealthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (currentHealthField != null)
-                    {
-                        int currentHealth = (int)currentHealthField.GetValue(playerHealthComponent);
-
-                        if (currentHealth > 0)
-                        {
-                            int addHealth = 10;
-                            if (currentHealth + addHealth > 100)
-                            {
-                                addHealth = 100 - currentHealth;
-                            }
-
-                            int newHealth = currentHealth + addHealth;
-                            currentHealthField.SetValue(playerHealthComponent, newHealth);
-                        }
-                    }
+                    CallHealMethod(targetHealth, 10, false);
+                     MelonLogger.Msg($"Attempted to heal player {playerIndex}.");
                 }
+                else
+                {
+                     MelonLogger.Warning($"Cannot HealOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                }
+            }
+             else
+            {
+                 MelonLogger.Warning($"Cannot HealOtherPlayer: Invalid player index {playerIndex}.");
             }
         }
 
-        public void KillPlayer(int playerIndex)
+        public void ReviveOtherPlayer(int playerIndex)
         {
             if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
+                MonoBehaviour targetHealth = _playerHealthComponents[playerIndex];
+                if (targetHealth != null)
                 {
-                    MethodInfo killMethod = playerHealthComponent.GetType().GetMethod("TakeDamage",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (killMethod != null)
-                    {
-                        try
-                        {
-                            try
-                            {
-                                FieldInfo currentHealthField = playerHealthComponent.GetType().GetField("health",
-                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                                int currentHealth = 100;
-                                if (currentHealthField != null)
-                                {
-                                    currentHealth = (int)currentHealthField.GetValue(playerHealthComponent);
-                                }
-
-                                killMethod.Invoke(playerHealthComponent, new object[] { currentHealth + 1000 });
-                                return;
-                            }
-                            catch { }
-                        }
-                        catch { }
-                    }
-
-                    MethodInfo dieMethod = playerHealthComponent.GetType().GetMethod("Die",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (dieMethod != null)
-                    {
-                        try
-                        {
-                            try
-                            {
-                                dieMethod.Invoke(playerHealthComponent, null);
-                                return;
-                            }
-                            catch
-                            {
-                                dieMethod.Invoke(playerHealthComponent, new object[] { true });
-                                return;
-                            }
-                        }
-                        catch { }
-                    }
-
-                    FieldInfo playerHealthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (playerHealthField != null)
-                    {
-                        playerHealthField.SetValue(playerHealthComponent, 0);
-                    }
+                     CallHealMethod(targetHealth, 100, false);
+                     MelonLogger.Msg($"Attempted to revive player {playerIndex}.");
                 }
+                else
+                {
+                     MelonLogger.Warning($"Cannot ReviveOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                }
+            }
+             else
+            {
+                 MelonLogger.Warning($"Cannot ReviveOtherPlayer: Invalid player index {playerIndex}.");
             }
         }
 
-        public void RevivePlayer(int playerIndex)
+        private void CallHealMethod(MonoBehaviour healthComponent, int amount, bool useEffect)
         {
-            if (playerIndex >= 0 && playerIndex < _playerAvatarComponents.Count)
+            if (healthComponent == null) return;
+
+            try
             {
-                MonoBehaviour playerAvatarComponent = _playerAvatarComponents[playerIndex];
-
-                if (playerAvatarComponent != null)
+                 MethodInfo healMethod = healthComponent.GetType().GetMethod("Heal", new Type[] { typeof(int), typeof(bool) });
+                 if (healMethod != null)
                 {
-                    if (!IsPlayerAlive(playerIndex))
-                    {
-                        MethodInfo reviveMethod = playerAvatarComponent.GetType().GetMethod("Revive",
-                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                        if (reviveMethod != null)
-                        {
-                            try
-                            {
-                                reviveMethod.Invoke(playerAvatarComponent, new object[] { true });
-                            }
-                            catch
-                            {
-                                MethodInfo reviveRPCMethod = playerAvatarComponent.GetType().GetMethod("ReviveRPC",
-                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                                if (reviveRPCMethod != null)
-                                {
-                                    try
-                                    {
-                                        reviveRPCMethod.Invoke(playerAvatarComponent, new object[] { true });
-                                    }
-                                    catch
-                                    {
-                                        if (playerIndex < _playerHealthComponents.Count)
-                                        {
-                                            MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-                                            if (playerHealthComponent != null)
-                                            {
-                                                FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
-                                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                                                if (healthField != null)
-                                                {
-                                                    healthField.SetValue(playerHealthComponent, 30);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    healMethod.Invoke(healthComponent, new object[] { amount, useEffect });
                 }
+                else
+                {
+                     MelonLogger.Warning($"Heal(int, bool) method not found on {healthComponent.GetType().Name}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                 MelonLogger.Error($"Error calling Heal method: {ex.Message}");
             }
         }
 
@@ -862,45 +702,94 @@ namespace REPO_UTILS
 
         public bool IsPlayerAlive(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (playerIndex < 0 || playerIndex >= _playerHealthComponents.Count || _playerHealthComponents[playerIndex] == null)
+                return false;
+
+            try
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
+                FieldInfo deadField = _playerHealthComponents[playerIndex].GetType().GetField("dead", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (deadField != null && deadField.FieldType == typeof(bool))
                 {
-                    FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (healthField != null)
-                    {
-                        int currentHealth = (int)healthField.GetValue(playerHealthComponent);
-                        return currentHealth > 0;
-                    }
+                    return !(bool)deadField.GetValue(_playerHealthComponents[playerIndex]);
                 }
-            }
 
-            return false;
+                int health = GetPlayerHealth(playerIndex);
+                return health > 0;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error checking if player {playerIndex} is alive: {ex.Message}");
+                return false;
+            }
         }
 
         public int GetPlayerHealth(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (playerIndex < 0 || playerIndex >= _playerHealthComponents.Count || _playerHealthComponents[playerIndex] == null)
+                return 0;
+
+            try
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
+                FieldInfo healthField = _playerHealthComponents[playerIndex].GetType().GetField("health", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (healthField != null)
                 {
-                    FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (healthField != null)
+                    if (typeof(IConvertible).IsAssignableFrom(healthField.FieldType))
                     {
-                        return (int)healthField.GetValue(playerHealthComponent);
+                        object value = healthField.GetValue(_playerHealthComponents[playerIndex]);
+                        return Convert.ToInt32(value);
                     }
                 }
-            }
 
-            return 0;
+                PropertyInfo healthProperty = _playerHealthComponents[playerIndex].GetType().GetProperty("Health", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (healthProperty != null && healthProperty.PropertyType == typeof(int))
+                {
+                    return (int)healthProperty.GetValue(_playerHealthComponents[playerIndex]);
+                }
+
+                MelonLogger.Warning($"Could not find 'health' field or property for player {playerIndex}. Returning 0.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error getting health for player {playerIndex}: {ex.Message}");
+                return 0;
+            }
+        }
+
+        public string GetPlayerName(int playerIndex)
+        {
+            if (playerIndex >= 0 && playerIndex < _playerAvatarComponents.Count)
+            {
+                MonoBehaviour avatarComponent = _playerAvatarComponents[playerIndex];
+                if (avatarComponent != null)
+                {
+                    try
+                    {
+                        FieldInfo nameField = avatarComponent.GetType().GetField("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (nameField != null && nameField.FieldType == typeof(string))
+                        {
+                            return (string)nameField.GetValue(avatarComponent);
+                        }
+                        else
+                        {
+                            MelonLogger.Warning($"'playerName' field not found or not string on PlayerAvatar for index {playerIndex}.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MelonLogger.Error($"Error getting playerName for player {playerIndex}: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // MelonLogger.Warning($"PlayerAvatar component is null for player index {playerIndex}.");
+                }
+            }
+            else
+            {
+                MelonLogger.Warning($"Invalid player index {playerIndex} for GetPlayerName.");
+            }
+            return $"Player {playerIndex + 1}";
         }
 
         public bool IsGodModeEnabled()
