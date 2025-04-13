@@ -193,8 +193,14 @@ namespace REPO_UTILS
         {
             // Show total value in the items label
             float totalValue = _core.ItemManager.CalculateTotalItemValue();
-            GUI.Label(new Rect(baseX + 10, baseY + currentY, 280, 20),
+            GUI.Label(new Rect(baseX + 10, baseY + currentY, 200, 20),
                      $"Items: (Total Value: ${totalValue:N0})");
+
+            // Add Max Value button next to the label (Changed text to "Max")
+            if (GUI.Button(new Rect(baseX + 215, baseY + currentY, 80, 20), "Max"))
+            {
+                 _core.MaxValueClosestItem();
+            }
 
             if (GUI.Button(new Rect(baseX + _mainWindowRect.width - 70, baseY + currentY, 60, 20),
                           _showItemList ? "Hide" : "Show"))

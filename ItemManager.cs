@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 using MelonLoader;
+using System;
 
 namespace REPO_UTILS
 {
@@ -283,6 +284,94 @@ namespace REPO_UTILS
             }
 
             return totalValue;
+        }
+
+        // New method to set the value of the closest item
+        public void MaxValueClosestItem()
+        {
+            MelonLogger.Msg("Attempting to maximize value of closest item...");
+
+            if (_items == null || _items.Count == 0)
+            {
+                MelonLogger.Warning("No items found to modify.");
+                return;
+            }
+
+            Vector3 playerPosition = _core.GetPlayerPosition();
+            Transform closestItem = null;
+            float minDistanceSqr = float.MaxValue;
+
+            // Find the closest valid item
+            foreach (Transform itemTransform in _items)
+            {
+                if (itemTransform == null) continue;
+
+                float distanceSqr = (itemTransform.position - playerPosition).sqrMagnitude;
+                if (distanceSqr < minDistanceSqr)
+                {
+                    minDistanceSqr = distanceSqr;
+                    closestItem = itemTransform;
+                }
+            }
+
+            if (closestItem == null)
+            {
+                MelonLogger.Warning("Could not determine the closest item.");
+                return;
+            }
+
+            MelonLogger.Msg($"Closest item found: {closestItem.name} at distance {Mathf.Sqrt(minDistanceSqr):F2}m");
+
+            // Get the ValuableObject component
+            MonoBehaviour valuableComponent = closestItem.GetComponent("ValuableObject") as MonoBehaviour;
+            if (valuableComponent == null)
+            {
+                MelonLogger.Error($"Closest item '{closestItem.name}' does not have a ValuableObject component.");
+                return;
+            }
+
+            // Find the specific value field used by CalculateTotalItemValue
+            string fieldNameUsed = "dollarValueCurrent"; // Use the exact field name
+            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            FieldInfo valueField = valuableComponent.GetType().GetField(fieldNameUsed, flags);
+
+            if (valueField == null)
+            {
+                MelonLogger.Error($"Could not find the specific field '{fieldNameUsed}' on {valuableComponent.GetType().Name} for item '{closestItem.name}'.");
+                return;
+            }
+
+            // Set the value to 999999
+            try
+            {
+                int newValue = 999999;
+                // Check field type and convert if necessary
+                if (valueField.FieldType == typeof(int))
+                {
+                    valueField.SetValue(valuableComponent, newValue);
+                }
+                else if (valueField.FieldType == typeof(float))
+                {
+                    valueField.SetValue(valuableComponent, (float)newValue);
+                }
+                else if (valueField.FieldType == typeof(double))
+                {
+                    valueField.SetValue(valuableComponent, (double)newValue);
+                }
+                 else
+                 {
+                     MelonLogger.Warning($"Value field '{fieldNameUsed}' on {closestItem.name} has an unexpected type ({valueField.FieldType}). Attempting conversion might fail.");
+                     // Attempt conversion, might throw exception if incompatible
+                     object convertedValue = Convert.ChangeType(newValue, valueField.FieldType);
+                     valueField.SetValue(valuableComponent, convertedValue);
+                 }
+
+                 MelonLogger.Msg($"Successfully set '{fieldNameUsed}' of '{closestItem.name}' to {newValue}.");
+            }
+            catch (Exception ex)
+            {
+                 MelonLogger.Error($"Failed to set value field '{fieldNameUsed}' for item '{closestItem.name}': {ex.Message}");
+            }
         }
 
         #endregion
