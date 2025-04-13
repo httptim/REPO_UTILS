@@ -149,6 +149,12 @@ namespace REPO_UTILS
             {
                  _core.PlayerManager.ReviveSelf();
             }
+
+            // Give Gun button
+            if (GUI.Button(new Rect(x + 220, y + 100, 50, 20), "Gun"))
+            {
+                _core.PlayerManager.GiveTranqGun();
+            }
         }
 
         private void DrawPlayerSection(float baseX, float baseY, float currentY, float sectionHeight)
