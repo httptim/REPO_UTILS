@@ -330,47 +330,27 @@ namespace REPO_UTILS
                 return;
             }
 
-            // Find the specific value field used by CalculateTotalItemValue
-            string fieldNameUsed = "dollarValueCurrent"; // Use the exact field name
-            BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-            FieldInfo valueField = valuableComponent.GetType().GetField(fieldNameUsed, flags);
+            // Use DollarValueSetRPC method instead of setting field
+            string methodName = "DollarValueSetRPC";
+            MethodInfo valueSetMethod = valuableComponent.GetType().GetMethod(methodName, BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance, null, new Type[] { typeof(float) }, null);
 
-            if (valueField == null)
+            if (valueSetMethod == null)
             {
-                MelonLogger.Error($"Could not find the specific field '{fieldNameUsed}' on {valuableComponent.GetType().Name} for item '{closestItem.name}'.");
+                MelonLogger.Error($"Could not find method '{methodName}(float)' on {valuableComponent.GetType().Name} for item '{closestItem.name}'.");
                 return;
             }
 
-            // Set the value to 999999
+            // Set the value to 999999 using the method
             try
             {
-                int newValue = 999999;
-                // Check field type and convert if necessary
-                if (valueField.FieldType == typeof(int))
-                {
-                    valueField.SetValue(valuableComponent, newValue);
-                }
-                else if (valueField.FieldType == typeof(float))
-                {
-                    valueField.SetValue(valuableComponent, (float)newValue);
-                }
-                else if (valueField.FieldType == typeof(double))
-                {
-                    valueField.SetValue(valuableComponent, (double)newValue);
-                }
-                 else
-                 {
-                     MelonLogger.Warning($"Value field '{fieldNameUsed}' on {closestItem.name} has an unexpected type ({valueField.FieldType}). Attempting conversion might fail.");
-                     // Attempt conversion, might throw exception if incompatible
-                     object convertedValue = Convert.ChangeType(newValue, valueField.FieldType);
-                     valueField.SetValue(valuableComponent, convertedValue);
-                 }
-
-                 MelonLogger.Msg($"Successfully set '{fieldNameUsed}' of '{closestItem.name}' to {newValue}.");
+                float newValue = 999999f;
+                MelonLogger.Msg($"Attempting to call {methodName}({newValue}) on '{closestItem.name}'...");
+                valueSetMethod.Invoke(valuableComponent, new object[] { newValue });
+                MelonLogger.Msg($"Successfully called {methodName} on '{closestItem.name}'.");
             }
             catch (Exception ex)
             {
-                 MelonLogger.Error($"Failed to set value field '{fieldNameUsed}' for item '{closestItem.name}': {ex.Message}");
+                MelonLogger.Error($"Failed to call method '{methodName}' for item '{closestItem.name}': {ex.Message}");
             }
         }
 
