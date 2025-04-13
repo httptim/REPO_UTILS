@@ -251,6 +251,12 @@ namespace REPO_UTILS
             ItemManager.MakeAllItemsCheap(); // Delegate to ItemManager
         }
 
+        // New method to trigger completing extraction points
+        public void CompleteExtractionPoints()
+        {
+            ItemManager.CompleteExtractionPoints(); // Delegate to ItemManager
+        }
+
         #endregion
     }
 }

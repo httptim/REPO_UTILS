@@ -420,6 +420,101 @@ namespace REPO_UTILS
             MelonLogger.Msg($"Cheap items process complete. Processed: {itemsProcessed}, Modified: {itemsModified}.");
         }
 
+        // New method to complete all extraction points
+        public void CompleteExtractionPoints()
+        {
+            MelonLogger.Msg("Attempting to complete all extraction points...");
+
+            GameObject levelGenerator = GameObject.Find("Level Generator");
+            if (levelGenerator == null)
+            {
+                MelonLogger.Error("Could not find 'Level Generator' GameObject.");
+                return;
+            }
+
+            Transform levelTransform = levelGenerator.transform.Find("Level");
+            if (levelTransform == null)
+            {
+                MelonLogger.Error("Could not find 'Level' child transform under 'Level Generator'.");
+                return;
+            }
+
+            // Find all descendant GameObjects named "Extraction Point" under the Level transform
+            List<GameObject> extractionPointGameObjects = levelTransform.GetComponentsInChildren<Transform>(true) // Include inactive
+                .Where(t => t.gameObject.name == "Extraction Point")
+                .Select(t => t.gameObject)
+                .ToList();
+
+            if (extractionPointGameObjects.Count == 0)
+            {
+                MelonLogger.Warning("No GameObjects named 'Extraction Point' found under Level Generator/Level.");
+                return;
+            }
+
+            MelonLogger.Msg($"Found {extractionPointGameObjects.Count} GameObjects named 'Extraction Point'.");
+
+            int pointsModified = 0;
+            foreach (var epGameObject in extractionPointGameObjects)
+            {
+                 // Now get the ExtractionPoint component from this specific GameObject
+                 MonoBehaviour epComponent = epGameObject.GetComponent("ExtractionPoint") as MonoBehaviour;
+                 if (epComponent == null)
+                 {
+                     MelonLogger.Warning($"GameObject '{epGameObject.name}' found, but it does not have an ExtractionPoint component. Skipping.");
+                    continue;
+                 }
+
+                try
+                {
+                    Type epType = epComponent.GetType();
+                    // Find the nested State enum type
+                    Type stateEnumType = epType.GetNestedType("State", BindingFlags.Public | BindingFlags.NonPublic);
+                    if (stateEnumType == null || !stateEnumType.IsEnum)
+                    {
+                        MelonLogger.Error($"Could not find nested enum 'State' in {epType.FullName} for {epComponent.gameObject.name}.");
+                        continue;
+                    }
+
+                    // Get the "Complete" value from the enum
+                    object completeStateValue;
+                    try
+                    {
+                        completeStateValue = Enum.Parse(stateEnumType, "Complete", true); // Case-insensitive
+                    }
+                    catch (ArgumentException)
+                    {
+                        MelonLogger.Error($"Enum value 'Complete' not found in {stateEnumType.FullName} for {epComponent.gameObject.name}.");
+                        continue;
+                    }
+
+                    // Find the StateSet method that takes the State enum
+                    MethodInfo stateSetMethod = epType.GetMethod("StateSet", new Type[] { stateEnumType });
+                    if (stateSetMethod == null)
+                    {
+                         // Also try finding StateSetRPC as a fallback?
+                         stateSetMethod = epType.GetMethod("StateSetRPC", new Type[] { stateEnumType });
+                        if (stateSetMethod == null)
+                        {
+                             MelonLogger.Error($"Could not find method 'StateSet({stateEnumType.Name})' or 'StateSetRPC({stateEnumType.Name})' in {epType.FullName} for {epComponent.gameObject.name}.");
+                            continue;
+                        }
+                         MelonLogger.Msg($"Using StateSetRPC method for {epComponent.gameObject.name}.");
+                    }
+
+                    // Call the StateSet method with the Complete state
+                    MelonLogger.Msg($"Attempting to call {stateSetMethod.Name}({completeStateValue}) on {epComponent.gameObject.name}...");
+                    stateSetMethod.Invoke(epComponent, new object[] { completeStateValue });
+                    pointsModified++;
+                }
+                catch (Exception ex)
+                {
+                    MelonLogger.Error($"Failed to process extraction point '{epComponent.gameObject.name}': {ex.Message}");
+                }
+            }
+
+            MelonLogger.Msg($"Extraction point completion process finished. Modified: {pointsModified}/{extractionPointGameObjects.Count}");
+        }
+
         #endregion
 
         #region Getters

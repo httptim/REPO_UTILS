@@ -62,7 +62,7 @@ namespace REPO_UTILS
         public void DrawGUI()
         {
             // Calculate dynamic heights based on what's shown
-            float toggleSectionHeight = 125f; // Increased height for Heal/Revive Self buttons
+            float toggleSectionHeight = 150f; // Increased height for Heal/Revive/Extract/Cheap buttons
             float playerSectionHeight = _showPlayerList ? 200f : 25f;
             float enemySectionHeight = _showEnemyList ? 170f : 25f;
             float itemSectionHeight = _showItemList ? 170f : 25f;
@@ -150,8 +150,14 @@ namespace REPO_UTILS
                  _core.PlayerManager.ReviveSelf();
             }
 
-            // Cheap button (New)
-            if (GUI.Button(new Rect(x + 220, y + 100, 60, 20), "Cheap")) // Positioned next to Revive Self
+            // Complete Extract button (New)
+            if (GUI.Button(new Rect(x, y + 125, 100, 20), "Complete")) // Positioned below Heal/Revive Self
+            {
+                _core.CompleteExtractionPoints();
+            }
+
+            // Cheap button
+            if (GUI.Button(new Rect(x + 110, y + 125, 60, 20), "Cheap")) // Adjusted position
             {
                  _core.MakeAllItemsCheap();
             }
