@@ -108,51 +108,40 @@ namespace REPO_UTILS
 
         private void FindOtherPlayers()
         {
+            _otherPlayers.Clear();
+            _playerAvatarComponents.Clear();
+            _playerHealthComponents.Clear();
+            ClearPlayerESP();
+
             GameObject[] allPlayerAvatars = GameObject.FindObjectsOfType<GameObject>()
-                .Where(go => go.name == "PlayerAvatar(Clone)" && go.transform.childCount == 10)
+                .Where(go => go.name == "PlayerAvatar(Clone)" && go.transform != _playerAvatar)
                 .ToArray();
 
             foreach (var playerObj in allPlayerAvatars)
             {
-                if (playerObj.transform == _playerAvatar) continue;
-
                 Transform playerTransform = playerObj.transform;
-                if (!_otherPlayers.Contains(playerTransform))
+                _otherPlayers.Add(playerTransform);
+
+                Transform otherPlayerController = playerTransform.Find("Player Avatar Controller");
+                MonoBehaviour healthComponent = null;
+                MonoBehaviour avatarComponent = null;
+
+                if (otherPlayerController != null)
                 {
-                    _otherPlayers.Add(playerTransform);
-
-                    Transform playerController = playerTransform.Find("Player Avatar Controller");
-                    if (playerController != null)
-                    {
-                        MonoBehaviour[] components = playerController.GetComponents<MonoBehaviour>();
-                        MonoBehaviour healthComponent = null;
-                        MonoBehaviour avatarComponent = null;
-
-                        foreach (var component in components)
-                        {
-                            string typeName = component.GetType().Name;
-                            if (typeName == "PlayerHealth")
-                            {
-                                healthComponent = component;
-                            }
-                            else if (typeName == "PlayerAvatar")
-                            {
-                                avatarComponent = component;
-                            }
-                        }
-
-                        _playerHealthComponents.Add(healthComponent);
-                        _playerAvatarComponents.Add(avatarComponent);
-                    }
-                    else
-                    {
-                        _playerHealthComponents.Add(null);
-                        _playerAvatarComponents.Add(null);
-                    }
-
-                    CreateLineRendererForPlayer(playerTransform);
+                    healthComponent = otherPlayerController.GetComponent("PlayerHealth") as MonoBehaviour;
+                    avatarComponent = otherPlayerController.GetComponent("PlayerAvatar") as MonoBehaviour;
                 }
+                else
+                {
+                    MelonLogger.Warning($"Could not find 'Player Avatar Controller' for player object: {playerObj.name}");
+                }
+
+                _playerHealthComponents.Add(healthComponent);
+                _playerAvatarComponents.Add(avatarComponent);
+
+                CreateLineRendererForPlayer(playerTransform);
             }
+            MelonLogger.Msg($"Found {_otherPlayers.Count} other players.");
         }
 
         public void OnUpdate()
@@ -649,155 +638,93 @@ namespace REPO_UTILS
             }
         }
 
-        public void HealPlayer(int playerIndex)
+        public void HealSelf()
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (_playerHealth != null)
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
-                {
-                    FieldInfo currentHealthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (currentHealthField != null)
-                    {
-                        int currentHealth = (int)currentHealthField.GetValue(playerHealthComponent);
-
-                        if (currentHealth > 0)
-                        {
-                            int addHealth = 10;
-                            if (currentHealth + addHealth > 100)
-                            {
-                                addHealth = 100 - currentHealth;
-                            }
-
-                            int newHealth = currentHealth + addHealth;
-                            currentHealthField.SetValue(playerHealthComponent, newHealth);
-                        }
-                    }
-                }
+                CallHealMethod(_playerHealth, 10, false);
+                MelonLogger.Msg("Attempted to heal self.");
+            }
+            else
+            {
+                MelonLogger.Warning("Cannot HealSelf: PlayerHealth component not found for local player.");
             }
         }
 
-        public void KillPlayer(int playerIndex)
+        public void ReviveSelf()
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (_playerHealth != null)
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
-                {
-                    MethodInfo killMethod = playerHealthComponent.GetType().GetMethod("TakeDamage",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (killMethod != null)
-                    {
-                        try
-                        {
-                            try
-                            {
-                                FieldInfo currentHealthField = playerHealthComponent.GetType().GetField("health",
-                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                                int currentHealth = 100;
-                                if (currentHealthField != null)
-                                {
-                                    currentHealth = (int)currentHealthField.GetValue(playerHealthComponent);
-                                }
-
-                                killMethod.Invoke(playerHealthComponent, new object[] { currentHealth + 1000 });
-                                return;
-                            }
-                            catch { }
-                        }
-                        catch { }
-                    }
-
-                    MethodInfo dieMethod = playerHealthComponent.GetType().GetMethod("Die",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (dieMethod != null)
-                    {
-                        try
-                        {
-                            try
-                            {
-                                dieMethod.Invoke(playerHealthComponent, null);
-                                return;
-                            }
-                            catch
-                            {
-                                dieMethod.Invoke(playerHealthComponent, new object[] { true });
-                                return;
-                            }
-                        }
-                        catch { }
-                    }
-
-                    FieldInfo playerHealthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (playerHealthField != null)
-                    {
-                        playerHealthField.SetValue(playerHealthComponent, 0);
-                    }
-                }
+                CallHealMethod(_playerHealth, 100, false);
+                MelonLogger.Msg("Attempted to revive self.");
+            }
+            else
+            {
+                MelonLogger.Warning("Cannot ReviveSelf: PlayerHealth component not found for local player.");
             }
         }
 
-        public void RevivePlayer(int playerIndex)
+        public void HealOtherPlayer(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex < _playerAvatarComponents.Count)
+            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
             {
-                MonoBehaviour playerAvatarComponent = _playerAvatarComponents[playerIndex];
-
-                if (playerAvatarComponent != null)
+                MonoBehaviour targetHealth = _playerHealthComponents[playerIndex];
+                if (targetHealth != null)
                 {
-                    if (!IsPlayerAlive(playerIndex))
-                    {
-                        MethodInfo reviveMethod = playerAvatarComponent.GetType().GetMethod("Revive",
-                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                        if (reviveMethod != null)
-                        {
-                            try
-                            {
-                                reviveMethod.Invoke(playerAvatarComponent, new object[] { true });
-                            }
-                            catch
-                            {
-                                MethodInfo reviveRPCMethod = playerAvatarComponent.GetType().GetMethod("ReviveRPC",
-                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                                if (reviveRPCMethod != null)
-                                {
-                                    try
-                                    {
-                                        reviveRPCMethod.Invoke(playerAvatarComponent, new object[] { true });
-                                    }
-                                    catch
-                                    {
-                                        if (playerIndex < _playerHealthComponents.Count)
-                                        {
-                                            MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-                                            if (playerHealthComponent != null)
-                                            {
-                                                FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
-                                                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                                                if (healthField != null)
-                                                {
-                                                    healthField.SetValue(playerHealthComponent, 30);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    CallHealMethod(targetHealth, 10, false);
+                    MelonLogger.Msg($"Attempted to heal player {playerIndex}.");
                 }
+                else
+                {
+                    MelonLogger.Warning($"Cannot HealOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                }
+            }
+            else
+            {
+                MelonLogger.Warning($"Cannot HealOtherPlayer: Invalid player index {playerIndex}.");
+            }
+        }
+
+        public void ReviveOtherPlayer(int playerIndex)
+        {
+            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            {
+                MonoBehaviour targetHealth = _playerHealthComponents[playerIndex];
+                if (targetHealth != null)
+                {
+                    CallHealMethod(targetHealth, 100, false);
+                    MelonLogger.Msg($"Attempted to revive player {playerIndex}.");
+                }
+                else
+                {
+                    MelonLogger.Warning($"Cannot ReviveOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                }
+            }
+            else
+            {
+                MelonLogger.Warning($"Cannot ReviveOtherPlayer: Invalid player index {playerIndex}.");
+            }
+        }
+
+        private void CallHealMethod(MonoBehaviour healthComponent, int amount, bool useEffect)
+        {
+            if (healthComponent == null) return;
+
+            try
+            {
+                MethodInfo healMethod = healthComponent.GetType().GetMethod("Heal", new Type[] { typeof(int), typeof(bool) });
+                if (healMethod != null)
+                {
+                    healMethod.Invoke(healthComponent, new object[] { amount, useEffect });
+                }
+                else
+                {
+                    MelonLogger.Warning($"Heal(int, bool) method not found on {healthComponent.GetType().Name}.");
+                }
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error calling Heal method: {ex.Message}");
             }
         }
 
@@ -862,45 +789,94 @@ namespace REPO_UTILS
 
         public bool IsPlayerAlive(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (playerIndex < 0 || playerIndex >= _playerHealthComponents.Count || _playerHealthComponents[playerIndex] == null)
+                return false;
+
+            try
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
+                FieldInfo deadField = _playerHealthComponents[playerIndex].GetType().GetField("dead", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (deadField != null && deadField.FieldType == typeof(bool))
                 {
-                    FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (healthField != null)
-                    {
-                        int currentHealth = (int)healthField.GetValue(playerHealthComponent);
-                        return currentHealth > 0;
-                    }
+                    return !(bool)deadField.GetValue(_playerHealthComponents[playerIndex]);
                 }
-            }
 
-            return false;
+                int health = GetPlayerHealth(playerIndex);
+                return health > 0;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error checking if player {playerIndex} is alive: {ex.Message}");
+                return false;
+            }
         }
 
         public int GetPlayerHealth(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (playerIndex < 0 || playerIndex >= _playerHealthComponents.Count || _playerHealthComponents[playerIndex] == null)
+                return 0;
+
+            try
             {
-                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
-
-                if (playerHealthComponent != null)
+                FieldInfo healthField = _playerHealthComponents[playerIndex].GetType().GetField("health", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (healthField != null)
                 {
-                    FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (healthField != null)
+                    if (typeof(IConvertible).IsAssignableFrom(healthField.FieldType))
                     {
-                        return (int)healthField.GetValue(playerHealthComponent);
+                        object value = healthField.GetValue(_playerHealthComponents[playerIndex]);
+                        return Convert.ToInt32(value);
                     }
                 }
-            }
 
-            return 0;
+                PropertyInfo healthProperty = _playerHealthComponents[playerIndex].GetType().GetProperty("Health", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                if (healthProperty != null && healthProperty.PropertyType == typeof(int))
+                {
+                    return (int)healthProperty.GetValue(_playerHealthComponents[playerIndex]);
+                }
+
+                MelonLogger.Warning($"Could not find 'health' field or property for player {playerIndex}. Returning 0.");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                MelonLogger.Error($"Error getting health for player {playerIndex}: {ex.Message}");
+                return 0;
+            }
+        }
+
+        public string GetPlayerName(int playerIndex)
+        {
+            if (playerIndex >= 0 && playerIndex < _playerAvatarComponents.Count)
+            {
+                MonoBehaviour avatarComponent = _playerAvatarComponents[playerIndex];
+                if (avatarComponent != null)
+                {
+                    try
+                    {
+                        FieldInfo nameField = avatarComponent.GetType().GetField("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (nameField != null && nameField.FieldType == typeof(string))
+                        {
+                            return (string)nameField.GetValue(avatarComponent);
+                        }
+                        else
+                        {
+                            MelonLogger.Warning($"'playerName' field not found or not string on PlayerAvatar for index {playerIndex}.");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        MelonLogger.Error($"Error getting playerName for player {playerIndex}: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    // MelonLogger.Warning($"PlayerAvatar component is null for player index {playerIndex}.");
+                }
+            }
+            else
+            {
+                MelonLogger.Warning($"Invalid player index {playerIndex} for GetPlayerName.");
+            }
+            return $"Player {playerIndex + 1}";
         }
 
         public bool IsGodModeEnabled()
