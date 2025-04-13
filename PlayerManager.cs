@@ -218,180 +218,337 @@ namespace REPO_UTILS
         {
             _originalValues.Clear();
 
-            // Find the PlayerController component (assuming it's on the main player object or controller transform)
-            // This might need adjustment based on the actual game object structure
-            MonoBehaviour playerControllerComponent = _playerMovement; // Use the cached PlayerMovement/Controller component
-
-            if (playerControllerComponent != null && playerControllerComponent.GetType().Name.Contains("Controller")) // Check if it's likely the PlayerController
+            GameObject[] allPlayerObjects = GameObject.FindGameObjectsWithTag("Player");
+            if (allPlayerObjects.Length == 0)
             {
-                // Store SprintSpeed
-                FieldInfo sprintSpeedField = playerControllerComponent.GetType().GetField("SprintSpeed",
-                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                if (sprintSpeedField != null)
+                GameObject playerObj = GameObject.Find("Player");
+                if (playerObj != null)
                 {
-                    _originalValues["SprintSpeed"] = sprintSpeedField.GetValue(playerControllerComponent);
-                    MelonLogger.Msg($"Stored original SprintSpeed: {_originalValues["SprintSpeed"]}");
+                    allPlayerObjects = new GameObject[] { playerObj };
                 }
-                 else
-                {
-                     MelonLogger.Warning("Could not find 'SprintSpeed' field to store original value.");
-                 }
-
-                // Remove the old MoveSpeed storing logic if it exists elsewhere,
-                // or comment it out if keeping for reference:
-                /*
-                FieldInfo moveSpeedField = playerControllerComponent.GetType().GetField("MoveSpeed", ...);
-                if (moveSpeedField != null)
-                {
-                    _originalValues["MoveSpeed"] = moveSpeedField.GetValue(playerControllerComponent);
-                }
-                */
-            }
-             else
-            {
-                 MelonLogger.Warning("Could not find PlayerController component to store original values.");
             }
 
-            // Keep other original value storing logic if necessary (e.g., for health/stamina)
-            // ...
+            foreach (GameObject playerObj in allPlayerObjects)
+            {
+                Transform controllerTransform = playerObj.transform.Find("Controller");
+                if (controllerTransform == null) continue;
+
+                MonoBehaviour[] components = controllerTransform.GetComponents<MonoBehaviour>();
+                foreach (var component in components)
+                {
+                    if (component.GetType().Name == "PlayerController")
+                    {
+                        // Store SprintSpeed
+                        FieldInfo sprintSpeedField = component.GetType().GetField("SprintSpeed",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (sprintSpeedField != null)
+                        {
+                            try
+                            {
+                                _originalValues["SprintSpeed"] = sprintSpeedField.GetValue(component);
+                            }
+                            catch { }
+                        }
+
+                        // Store EnergyCurrent
+                        FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (energyCurrentField != null)
+                        {
+                            try
+                            {
+                                _originalValues["EnergyCurrent"] = energyCurrentField.GetValue(component);
+                            }
+                            catch { }
+                        }
+
+                        // Store EnergyStart
+                        FieldInfo energyStartField = component.GetType().GetField("EnergyStart",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (energyStartField != null)
+                        {
+                            try
+                            {
+                                _originalValues["EnergyStart"] = energyStartField.GetValue(component);
+                            }
+                            catch { }
+                        }
+
+                        // Store JumpExtra
+                        FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (jumpExtraField != null)
+                        {
+                            try
+                            {
+                                _originalValues["JumpExtra"] = jumpExtraField.GetValue(component);
+                            }
+                            catch { }
+                        }
+
+                        // Store JumpExtraCurrent
+                        FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                        if (jumpExtraCurrentField != null)
+                        {
+                            try
+                            {
+                                _originalValues["JumpExtraCurrent"] = jumpExtraField.GetValue(component); // Original code had a potential typo here: jumpExtraField instead of jumpExtraCurrentField
+                            }
+                            catch { }
+                        }
+                        // Keep MelonLogger message if desired
+                        MelonLogger.Msg($"Stored original values from {component.GetType().Name}: {string.Join(", ", _originalValues.Keys)}");
+                        return; // Exit after finding the PlayerController
+                    }
+                }
+            }
+             if (_originalValues.Count == 0) MelonLogger.Warning("Could not find PlayerController component to store original values.");
         }
 
         private void RestoreOriginalValues()
         {
-             MonoBehaviour playerControllerComponent = _playerMovement;
+            if (_originalValues.Count == 0) return;
 
-            if (playerControllerComponent != null && playerControllerComponent.GetType().Name.Contains("Controller"))
+            GameObject[] allPlayerObjects = GameObject.FindGameObjectsWithTag("Player");
+            if (allPlayerObjects.Length == 0)
             {
-                // Restore SprintSpeed
-                if (_originalValues.ContainsKey("SprintSpeed"))
+                GameObject playerObj = GameObject.Find("Player");
+                if (playerObj != null)
                 {
-                    FieldInfo sprintSpeedField = playerControllerComponent.GetType().GetField("SprintSpeed",
-                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                    if (sprintSpeedField != null)
-                    {
-                        try
-                        {
-                            sprintSpeedField.SetValue(playerControllerComponent, _originalValues["SprintSpeed"]);
-                             MelonLogger.Msg($"Restored original SprintSpeed: {_originalValues["SprintSpeed"]}");
-                        }
-                        catch (Exception ex)
-                        {
-                             MelonLogger.Error($"Failed to restore SprintSpeed: {ex.Message}");
-                        }
-                    }
-                     else
-                     {
-                          MelonLogger.Warning("Could not find 'SprintSpeed' field to restore original value.");
-                     }
+                    allPlayerObjects = new GameObject[] { playerObj };
                 }
-
-                // Remove or comment out old MoveSpeed restoration
-                 /*
-                 if (_originalValues.ContainsKey("MoveSpeed"))
-                 {
-                     FieldInfo moveSpeedField = playerControllerComponent.GetType().GetField("MoveSpeed", ...);
-                     if (moveSpeedField != null)
-                     {
-                         moveSpeedField.SetValue(playerControllerComponent, _originalValues["MoveSpeed"]);
-                     }
-                 }
-                 */
             }
-            else
+
+            foreach (GameObject playerObj in allPlayerObjects)
             {
-                 MelonLogger.Warning("Could not find PlayerController component to restore original values.");
+                Transform controllerTransform = playerObj.transform.Find("Controller");
+                if (controllerTransform == null) continue;
+
+                MonoBehaviour[] components = controllerTransform.GetComponents<MonoBehaviour>();
+                foreach (var component in components)
+                {
+                    if (component.GetType().Name == "PlayerController")
+                    {
+                        BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+
+                        // Restore SprintSpeed
+                        if (_originalValues.ContainsKey("SprintSpeed"))
+                        {
+                            FieldInfo sprintSpeedField = component.GetType().GetField("SprintSpeed", flags);
+                            if (sprintSpeedField != null)
+                            {
+                                try { sprintSpeedField.SetValue(component, _originalValues["SprintSpeed"]); } catch { }
+                            }
+                        }
+
+                        // Restore EnergyCurrent
+                        if (_originalValues.ContainsKey("EnergyCurrent"))
+                        {
+                            FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent", flags);
+                            if (energyCurrentField != null)
+                            {
+                                try { energyCurrentField.SetValue(component, _originalValues["EnergyCurrent"]); } catch { }
+                            }
+                        }
+
+                        // Restore EnergyStart
+                        if (_originalValues.ContainsKey("EnergyStart"))
+                        {
+                            FieldInfo energyStartField = component.GetType().GetField("EnergyStart", flags);
+                            if (energyStartField != null)
+                            {
+                                try { energyStartField.SetValue(component, _originalValues["EnergyStart"]); } catch { }
+                            }
+                        }
+
+                        // Restore JumpExtra
+                        if (_originalValues.ContainsKey("JumpExtra"))
+                        {
+                            FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra", flags);
+                            if (jumpExtraField != null)
+                            {
+                                try { jumpExtraField.SetValue(component, _originalValues["JumpExtra"]); } catch { }
+                            }
+                        }
+
+                        // Restore JumpExtraCurrent
+                        if (_originalValues.ContainsKey("JumpExtraCurrent"))
+                        {
+                            FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent", flags);
+                            if (jumpExtraCurrentField != null)
+                            {
+                                try { jumpExtraCurrentField.SetValue(component, _originalValues["JumpExtraCurrent"]); } catch { }
+                            }
+                        }
+                         MelonLogger.Msg($"Restored original player values for {component.GetType().Name}.");
+                        return; // Exit after finding PlayerController
+                    }
+                }
             }
-
-             // Keep other restore logic
-             // ...
+            MelonLogger.Warning("Could not find PlayerController component to restore original values.");
         }
-
 
         private void ApplyGodModeEffects()
         {
-             MonoBehaviour playerControllerComponent = _playerMovement;
+            ApplyInfiniteStamina();
 
-            if (playerControllerComponent != null && playerControllerComponent.GetType().Name.Contains("Controller"))
+            if (Time.frameCount % 300 == 0) // Check frame count to avoid running every frame
             {
-                 // Apply enhanced SprintSpeed
-                 FieldInfo sprintSpeedField = playerControllerComponent.GetType().GetField("SprintSpeed",
-                     BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
-
-                 if (sprintSpeedField != null)
-                 {
-                     try
-                     {
-                         sprintSpeedField.SetValue(playerControllerComponent, 8f); // Set SprintSpeed to 8f
-                         // MelonLogger.Msg("Applied enhanced SprintSpeed (8f)."); // Optional: Log spammy
-                     }
-                     catch (Exception ex)
-                     {
-                         MelonLogger.Error($"Failed to apply enhanced SprintSpeed: {ex.Message}");
-                     }
-                 }
-                  else
-                  {
-                     // Log only if the field wasn't found initially during StoreOriginalValues maybe?
-                     // MelonLogger.Warning("Could not find 'SprintSpeed' field to apply god mode effect.");
-                  }
-
-                 // Remove or comment out old MoveSpeed modification
-                 /*
-                 FieldInfo moveSpeedField = playerControllerComponent.GetType().GetField("MoveSpeed", ...);
-                 if (moveSpeedField != null)
-                 {
-                      // Logic to modify MoveSpeed removed
-                 }
-                 */
+                UpdatePlayerControllerValues();
             }
-             else
+        }
+
+        private void UpdatePlayerControllerValues()
+        {
+            string playerAvatarName = null;
+
+            // Attempt to get playerName from the local player's avatar components
+             if (_playerController != null) // Ensure _playerController is valid
+             {
+                 MonoBehaviour[] avatarComponents = _playerController.GetComponents<MonoBehaviour>();
+                 foreach (var component in avatarComponents)
+                 {
+                     // Check for Field first
+                     FieldInfo playerNameField = component.GetType().GetField("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                     if (playerNameField != null)
+                     {
+                         try { playerAvatarName = (string)playerNameField.GetValue(component); break; } catch { }
+                     }
+                     // Check for Property if field not found or failed
+                     if (playerAvatarName == null)
+                     {
+                         PropertyInfo playerNameProperty = component.GetType().GetProperty("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                         if (playerNameProperty != null && playerNameProperty.CanRead)
+                         {
+                            try { playerAvatarName = (string)playerNameProperty.GetValue(component, null); break; } catch { }
+                         }
+                     }
+                      if (playerAvatarName != null) break; // Exit loop once name is found
+                 }
+             }
+
+            // Find the PlayerController component and apply changes
+            GameObject[] allPlayerObjects = GameObject.FindGameObjectsWithTag("Player");
+            if (allPlayerObjects.Length == 0)
             {
-                 // MelonLogger.Warning("Could not find PlayerController component to apply god mode effects."); // Spammy
+                GameObject playerObj = GameObject.Find("Player");
+                if (playerObj != null) allPlayerObjects = new GameObject[] { playerObj };
             }
 
-             // Keep other god mode effects (like infinite health/stamina)
-             ApplyInfiniteStamina(); // Make sure this is still called if needed
-             // Add health setting logic here if required by god mode
-             // ...
+            foreach (GameObject playerObj in allPlayerObjects)
+            {
+                Transform controllerTransform = playerObj.transform.Find("Controller");
+                if (controllerTransform == null) continue;
+
+                MonoBehaviour[] components = controllerTransform.GetComponents<MonoBehaviour>();
+                foreach (var component in components)
+                {
+                    if (component.GetType().Name == "PlayerController") // Make sure this name is correct
+                    {
+                        // Compare names if possible, otherwise apply to the first found controller
+                        bool applyChanges = true; // Default to true
+                        if (playerAvatarName != null) // Only compare if we successfully got local player name
+                        {
+                            string controllerPlayerName = null;
+                             FieldInfo contPlayerNameField = component.GetType().GetField("playerName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                             if (contPlayerNameField != null) try { controllerPlayerName = (string)contPlayerNameField.GetValue(component); } catch { }
+
+                            // If controller name doesn't match local name, don't apply (unless controller has no name field)
+                             if (controllerPlayerName != null && playerAvatarName != controllerPlayerName)
+                             {
+                                 applyChanges = false;
+                             }
+                        }
+
+                        if (applyChanges)
+                        {
+                             BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+                            // Helper lambda to set value safely
+                            Action<FieldInfo, object> SetValueSafe = (field, value) => { try { field?.SetValue(component, value); } catch { } };
+
+                            // Set SprintSpeed to 8
+                            FieldInfo sprintSpeedField = component.GetType().GetField("SprintSpeed", flags);
+                            if (sprintSpeedField != null)
+                            {
+                                Type fieldType = sprintSpeedField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(sprintSpeedField, 8);
+                                else if (fieldType == typeof(float)) SetValueSafe(sprintSpeedField, 8f);
+                                else if (fieldType == typeof(double)) SetValueSafe(sprintSpeedField, 8.0);
+                            }
+
+                            // Set EnergyCurrent to 100
+                            FieldInfo energyCurrentField = component.GetType().GetField("EnergyCurrent", flags);
+                             if (energyCurrentField != null)
+                            {
+                                Type fieldType = energyCurrentField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(energyCurrentField, 100);
+                                else if (fieldType == typeof(float)) SetValueSafe(energyCurrentField, 100f);
+                                else if (fieldType == typeof(double)) SetValueSafe(energyCurrentField, 100.0);
+                            }
+
+                            // Set EnergyStart to 100
+                            FieldInfo energyStartField = component.GetType().GetField("EnergyStart", flags);
+                             if (energyStartField != null)
+                            {
+                                Type fieldType = energyStartField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(energyStartField, 100);
+                                else if (fieldType == typeof(float)) SetValueSafe(energyStartField, 100f);
+                                else if (fieldType == typeof(double)) SetValueSafe(energyStartField, 100.0);
+                            }
+
+                            // Set JumpExtra to 999
+                            FieldInfo jumpExtraField = component.GetType().GetField("JumpExtra", flags);
+                             if (jumpExtraField != null)
+                            {
+                                Type fieldType = jumpExtraField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(jumpExtraField, 999);
+                                else if (fieldType == typeof(float)) SetValueSafe(jumpExtraField, 999f);
+                                else if (fieldType == typeof(double)) SetValueSafe(jumpExtraField, 999.0);
+                            }
+
+                            // Set JumpExtraCurrent to 999
+                            FieldInfo jumpExtraCurrentField = component.GetType().GetField("JumpExtraCurrent", flags);
+                             if (jumpExtraCurrentField != null)
+                            {
+                                Type fieldType = jumpExtraCurrentField.FieldType;
+                                if (fieldType == typeof(int)) SetValueSafe(jumpExtraCurrentField, 999);
+                                else if (fieldType == typeof(float)) SetValueSafe(jumpExtraCurrentField, 999f);
+                                else if (fieldType == typeof(double)) SetValueSafe(jumpExtraCurrentField, 999.0);
+                            }
+
+                             // MelonLogger.Msg($"Applied god mode values to {component.GetType().Name}");
+                             return; // Assume only one PlayerController needs updating
+                        }
+                    }
+                }
+            }
+            // MelonLogger.Warning("Could not find PlayerController component to apply god mode values.");
         }
 
         public void ApplyInfiniteStamina()
         {
-            if (_playerStamina == null || _staminaFields.Count == 0)
-            {
-                // MelonLogger.Warning("Cannot apply infinite stamina: PlayerStamina component or fields not found."); // Potentially spammy
-                return;
-            }
+            if (_playerStamina == null) return;
 
-            try
+            // Set EnergyCurrent to maximum using cached fields
+             if (_staminaFields.TryGetValue("EnergyCurrent", out FieldInfo energyCurrentField) &&
+                 _staminaFields.TryGetValue("EnergyStart", out FieldInfo energyStartField))
             {
-                if (_staminaFields.TryGetValue("EnergyCurrent", out FieldInfo energyCurrentField))
+                try
                 {
-                    // Set current energy/stamina to 100
-                    if (energyCurrentField.FieldType == typeof(float))
-                        energyCurrentField.SetValue(_playerStamina, 100f);
-                    else if (energyCurrentField.FieldType == typeof(int))
-                        energyCurrentField.SetValue(_playerStamina, 100);
-                    // Add other type checks if necessary
+                    object maxStaminaValue = energyStartField.GetValue(_playerStamina);
+                    energyCurrentField.SetValue(_playerStamina, maxStaminaValue);
                 }
-
-                // Optionally, also set the max/start energy to 100 if desired
-                // if (_staminaFields.TryGetValue("EnergyStart", out FieldInfo energyStartField))
-                // {
-                //     if (energyStartField.FieldType == typeof(float))
-                //         energyStartField.SetValue(_playerStamina, 100f);
-                //     else if (energyStartField.FieldType == typeof(int))
-                //         energyStartField.SetValue(_playerStamina, 100);
-                // }
+                catch (Exception ex)
+                 {
+                     MelonLogger.Error($"Error applying infinite stamina (setting current to start): {ex.Message}");
+                 }
             }
-            catch (Exception ex)
-            {
-                MelonLogger.Error($"Error applying infinite stamina: {ex.Message}");
-                // Consider disabling this feature or logging once if errors persist
-                _playerStamina = null; // Stop trying if it errors
-            }
+             else
+             {
+                 // Fallback or log warning if fields weren't cached
+                 MelonLogger.Warning("Cannot apply infinite stamina: EnergyCurrent or EnergyStart field info missing.");
+             }
         }
 
         public void HealSelf()
@@ -399,24 +556,24 @@ namespace REPO_UTILS
             if (_playerHealth != null)
             {
                 CallHealMethod(_playerHealth, 10, false);
-                MelonLogger.Msg("Attempted to heal self.");
+                 MelonLogger.Msg("Attempted to heal self.");
             }
-            else
+             else
             {
-                MelonLogger.Warning("Cannot HealSelf: PlayerHealth component not found for local player.");
+                 MelonLogger.Warning("Cannot HealSelf: PlayerHealth component not found for local player.");
             }
         }
 
         public void ReviveSelf()
         {
-            if (_playerHealth != null)
+             if (_playerHealth != null)
             {
-                CallHealMethod(_playerHealth, 100, false);
-                MelonLogger.Msg("Attempted to revive self.");
+                CallHealMethod(_playerHealth, 100, false); // Assuming large heal amount revives
+                 MelonLogger.Msg("Attempted to revive self.");
             }
-            else
+             else
             {
-                MelonLogger.Warning("Cannot ReviveSelf: PlayerHealth component not found for local player.");
+                 MelonLogger.Warning("Cannot ReviveSelf: PlayerHealth component not found for local player.");
             }
         }
 
@@ -428,16 +585,16 @@ namespace REPO_UTILS
                 if (targetHealth != null)
                 {
                     CallHealMethod(targetHealth, 10, false);
-                    MelonLogger.Msg($"Attempted to heal player {playerIndex}.");
+                     MelonLogger.Msg($"Attempted to heal player {playerIndex}.");
                 }
                 else
                 {
-                    MelonLogger.Warning($"Cannot HealOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                     MelonLogger.Warning($"Cannot HealOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
                 }
             }
-            else
+             else
             {
-                MelonLogger.Warning($"Cannot HealOtherPlayer: Invalid player index {playerIndex}.");
+                 MelonLogger.Warning($"Cannot HealOtherPlayer: Invalid player index {playerIndex}.");
             }
         }
 
@@ -448,17 +605,17 @@ namespace REPO_UTILS
                 MonoBehaviour targetHealth = _playerHealthComponents[playerIndex];
                 if (targetHealth != null)
                 {
-                    CallHealMethod(targetHealth, 100, false);
-                    MelonLogger.Msg($"Attempted to revive player {playerIndex}.");
+                     CallHealMethod(targetHealth, 100, false);
+                     MelonLogger.Msg($"Attempted to revive player {playerIndex}.");
                 }
                 else
                 {
-                    MelonLogger.Warning($"Cannot ReviveOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                     MelonLogger.Warning($"Cannot ReviveOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
                 }
             }
-            else
+             else
             {
-                MelonLogger.Warning($"Cannot ReviveOtherPlayer: Invalid player index {playerIndex}.");
+                 MelonLogger.Warning($"Cannot ReviveOtherPlayer: Invalid player index {playerIndex}.");
             }
         }
 
@@ -468,19 +625,19 @@ namespace REPO_UTILS
 
             try
             {
-                MethodInfo healMethod = healthComponent.GetType().GetMethod("Heal", new Type[] { typeof(int), typeof(bool) });
-                if (healMethod != null)
+                 MethodInfo healMethod = healthComponent.GetType().GetMethod("Heal", new Type[] { typeof(int), typeof(bool) });
+                 if (healMethod != null)
                 {
                     healMethod.Invoke(healthComponent, new object[] { amount, useEffect });
                 }
                 else
                 {
-                    MelonLogger.Warning($"Heal(int, bool) method not found on {healthComponent.GetType().Name}.");
+                     MelonLogger.Warning($"Heal(int, bool) method not found on {healthComponent.GetType().Name}.");
                 }
             }
             catch (Exception ex)
             {
-                MelonLogger.Error($"Error calling Heal method: {ex.Message}");
+                 MelonLogger.Error($"Error calling Heal method: {ex.Message}");
             }
         }
 
