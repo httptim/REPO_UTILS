@@ -23,6 +23,7 @@ namespace REPO_UTILS
         private List<GameObject> _lineObjects = new List<GameObject>();
         private List<LineRenderer> _lineRenderers = new List<LineRenderer>();
         private List<bool> _enemyWasActive = new List<bool>();
+        private List<string> _enemyTypes = new List<string>();
 
         // Enemy display data
         private List<string> _enemyNames = new List<string>();
@@ -42,16 +43,13 @@ namespace REPO_UTILS
 
         public void Initialize(Transform enemiesParent)
         {
+            MelonLogger.Msg("[EnemyManager.Initialize] Called.");
             _enemiesParent = enemiesParent;
+            if (_enemiesParent == null) MelonLogger.Warning("  _enemiesParent is NULL on Initialize!");
 
-            UpdateEnemyList();
+            FindEnemies();
             CreateLineRenderersForEnemies();
-
-            _enemyWasActive = new List<bool>(_enemies.Count);
-            for (int i = 0; i < _enemies.Count; i++)
-            {
-                _enemyWasActive.Add(true);
-            }
+            MelonLogger.Msg("[EnemyManager.Initialize] Finished.");
         }
 
         public void Reset()
@@ -59,6 +57,7 @@ namespace REPO_UTILS
             _enemiesParent = null;
 
             _enemies.Clear();
+            _enemyTypes.Clear();
             ClearEnemyESP();
 
             _enemyWasActive.Clear();
@@ -372,5 +371,40 @@ namespace REPO_UTILS
         }
 
         #endregion
+
+        private void FindEnemies()
+        {
+            MelonLogger.Msg("[EnemyManager.FindEnemies] Called.");
+            _enemies.Clear(); // Clear before finding
+            _enemyTypes.Clear();
+            // Should also clear _lineObjects / _lineRenderers here?
+            // ClearEnemyESP(); // Might be better to call this
+
+            if (_enemiesParent == null)
+            {
+                MelonLogger.Warning("  Cannot find enemies: _enemiesParent is null.");
+                return;
+            }
+
+            // Find all direct children (assuming enemies are direct children)
+            List<Transform> potentialEnemies = new List<Transform>();
+             for (int i = 0; i < _enemiesParent.childCount; i++)
+             {
+                 potentialEnemies.Add(_enemiesParent.GetChild(i));
+             }
+            
+            MelonLogger.Msg($"[EnemyManager.FindEnemies] Found {potentialEnemies.Count} potential enemy transforms under Enemies parent.");
+
+            // Add filtering/validation if needed here (e.g., check for specific components)
+            foreach (var enemy in potentialEnemies)
+            {
+                 if (enemy != null) // Basic null check
+                 {
+                     _enemies.Add(enemy);
+                     _enemyTypes.Add(enemy.name); // Use name as type for now
+                 }
+            }
+            MelonLogger.Msg($"[EnemyManager.FindEnemies] Finished. Added {_enemies.Count} enemies to list.");
+        }
     }
 }

@@ -62,7 +62,7 @@ namespace REPO_UTILS
         public void DrawGUI()
         {
             // Calculate dynamic heights based on what's shown
-            float toggleSectionHeight = 150f; // Increased height for Heal/Revive/Extract/Cheap buttons
+            float toggleSectionHeight = 175f; // Increased height for Heal/Revive/Extract/Cheap/Refresh buttons
             float playerSectionHeight = _showPlayerList ? 200f : 25f;
             float enemySectionHeight = _showEnemyList ? 170f : 25f;
             float itemSectionHeight = _showItemList ? 170f : 25f;
@@ -161,6 +161,12 @@ namespace REPO_UTILS
             {
                  _core.MakeAllItemsCheap();
             }
+
+            // Manual Refresh button (New)
+            if (GUI.Button(new Rect(x, y + 150, 280, 20), "Manual Refresh")) // Positioned below other actions
+            {
+                 _core.ManualRefresh();
+            }
         }
 
         private void DrawPlayerSection(float baseX, float baseY, float currentY, float sectionHeight)
@@ -241,18 +247,43 @@ namespace REPO_UTILS
             GUI.Label(new Rect(x + 210, y + 5, 130, 20), "Actions");
 
             var players = _core.PlayerManager.GetOtherPlayers();
+            // --- DEBUG LOG --- 
+            // MelonLogger.Msg($"[UIManager] DrawPlayerList: Found {players.Count} players from PlayerManager."); // Commented out spam
+
+            if (players.Count == 0)
+            {
+                 GUI.Label(new Rect(x + 5, y + 30, width - 10, 20), "No other players detected");
+                 return; // Exit if no players
+            }
 
             Rect viewRect = new Rect(x, y + 25, width, height - 25);
-            Rect contentRect = new Rect(0, 0, width - 20, players.Count * 30);
+            Rect contentRect = new Rect(0, 0, width - 20, players.Count * 30); // Ensure content height is sufficient
 
             _playerListScrollPos = GUI.BeginScrollView(viewRect, _playerListScrollPos, contentRect);
 
             for (int i = 0; i < players.Count; i++)
             {
-                bool isAlive = _core.PlayerManager.IsPlayerAlive(i);
-                int playerHealth = _core.PlayerManager.GetPlayerHealth(i);
-                string statusText = isAlive ? "Alive" : "Dead";
-                string playerName = _core.PlayerManager.GetPlayerName(i); // Get player name
+                // --- DEBUG LOG --- 
+                 // MelonLogger.Msg($"[UIManager] Drawing player index {i}"); // Commented out spam
+                 string playerName = "Error";
+                 string statusText = "Error";
+                 int playerHealth = -1;
+                 bool isAlive = false;
+                 try
+                 {
+                     isAlive = _core.PlayerManager.IsPlayerAlive(i);
+                     playerHealth = _core.PlayerManager.GetPlayerHealth(i);
+                     statusText = isAlive ? "Alive" : "Dead";
+                     playerName = _core.PlayerManager.GetPlayerName(i); // Get player name
+                     // --- DEBUG LOG --- 
+                     // MelonLogger.Msg($"  -> Data: Name='{playerName}', Alive={isAlive}, HP={playerHealth}"); // Commented out spam
+                 }
+                 catch (Exception ex)
+                 {
+                     MelonLogger.Error($"[UIManager] Error getting data for player index {i}: {ex.Message}");
+                     // Continue loop but show error state for this player
+                 }
+
 
                 GUI.Label(new Rect(5, i * 30, 90, 20), playerName); // Use player name
 
@@ -266,22 +297,17 @@ namespace REPO_UTILS
                 GUI.enabled = isAlive && playerHealth < 100;
                 if (GUI.Button(new Rect(210, i * 30, 40, 20), "Heal"))
                 {
-                    _core.PlayerManager.HealOtherPlayer(i); // Call HealOtherPlayer
+                    _core.PlayerManager.HealOtherPlayer(i);
                 }
 
                 // Revive button - only enabled if player is dead
                 GUI.enabled = !isAlive;
                 if (GUI.Button(new Rect(255, i * 30, 50, 20), "Revive"))
                 {
-                    _core.PlayerManager.ReviveOtherPlayer(i); // Call ReviveOtherPlayer
+                    _core.PlayerManager.ReviveOtherPlayer(i);
                 }
 
                 GUI.enabled = true; // Reset GUI enabled state
-            }
-
-            if (players.Count == 0)
-            {
-                GUI.Label(new Rect(5, 0, width - 30, 20), "No other players detected");
             }
 
             GUI.EndScrollView();

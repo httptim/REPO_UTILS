@@ -36,10 +36,16 @@ namespace REPO_UTILS
 
         public void Initialize(Transform playerAvatar, Transform playerController)
         {
+            MelonLogger.Msg("[PlayerManager.Initialize] Called.");
             _playerAvatar = playerAvatar;
             _playerController = playerController;
-            FindPlayerComponents();
-            FindOtherPlayers();
+            if (_playerAvatar == null) MelonLogger.Warning("  _playerAvatar is NULL on Initialize!");
+            if (_playerController == null) MelonLogger.Warning("  _playerController is NULL on Initialize!");
+
+            FindPlayerComponents(); // Find local player components first
+            FindOtherPlayers(); // Then find others
+            // CacheInventoryComponent(); // REMOVED Call
+            MelonLogger.Msg("[PlayerManager.Initialize] Finished.");
         }
 
         public void Reset()
@@ -110,7 +116,8 @@ namespace REPO_UTILS
 
         private void FindOtherPlayers()
         {
-            _otherPlayers.Clear();
+            MelonLogger.Msg("[PlayerManager.FindOtherPlayers] Called.");
+            _otherPlayers.Clear(); // Clear lists before repopulating
             _playerAvatarComponents.Clear();
             _playerHealthComponents.Clear();
             ClearPlayerESP();
@@ -118,6 +125,8 @@ namespace REPO_UTILS
             GameObject[] allPlayerAvatars = GameObject.FindObjectsOfType<GameObject>()
                 .Where(go => go.name == "PlayerAvatar(Clone)" && go.transform != _playerAvatar)
                 .ToArray();
+
+            MelonLogger.Msg($"[PlayerManager.FindOtherPlayers] Found {allPlayerAvatars.Length} potential PlayerAvatar(Clone) objects (excluding self).");
 
             foreach (var playerObj in allPlayerAvatars)
             {
@@ -143,7 +152,7 @@ namespace REPO_UTILS
 
                 CreateLineRendererForPlayer(playerTransform);
             }
-            MelonLogger.Msg($"Found {_otherPlayers.Count} other players.");
+             MelonLogger.Msg($"[PlayerManager.FindOtherPlayers] Finished. Added {_otherPlayers.Count} other players.");
         }
 
         public void OnUpdate()
@@ -162,6 +171,9 @@ namespace REPO_UTILS
         private void UpdatePlayerESP()
         {
             if (_playerController == null) return;
+            if (!_playerESPEnabled) return; 
+            
+            if (Time.frameCount % 120 == 0) MelonLogger.Msg($"[PlayerManager.UpdatePlayerESP] Running. Players: {_otherPlayers.Count}, Renderers: {_playerLineRenderers.Count}");
 
             Vector3 playerPosition = _core.GetPlayerPosition();
 
@@ -174,8 +186,31 @@ namespace REPO_UTILS
                     {
                         Vector3 otherPlayerPosition = otherPlayerController.position;
                         DrawLineToTarget(playerPosition, otherPlayerPosition, _playerLineRenderers[i]);
+                        if (!_playerLineRenderers[i].enabled) 
+                        {
+                            if (Time.frameCount % 120 == 0) MelonLogger.Msg($"[UpdatePlayerESP] Re-enabling line for player index {i}.");
+                            _playerLineRenderers[i].enabled = true;
+                        }
                     }
+                     else 
+                     {
+                         if (_playerLineRenderers[i] != null && _playerLineRenderers[i].enabled)
+                         {
+                             MelonLogger.Warning($"[UpdatePlayerESP] Disabling line for player index {i} because otherPlayerController is NULL (Player: {_otherPlayers[i]?.name}).");
+                             _playerLineRenderers[i].enabled = false;
+                         }
+                     }
                 }
+                 else 
+                 {
+                     if (i < _playerLineRenderers.Count && _playerLineRenderers[i] != null && _playerLineRenderers[i].enabled)
+                     {
+                          MelonLogger.Warning($"[UpdatePlayerESP] Disabling line for index {i} because _otherPlayers[i] is NULL or _playerLineRenderers[i] is NULL.");
+                          _playerLineRenderers[i].enabled = false;
+                     }
+                      if (Time.frameCount % 120 == 0 && (_otherPlayers.Count != _playerLineRenderers.Count))
+                          MelonLogger.Warning($"[PlayerManager.UpdatePlayerESP] Mismatch! Players: {_otherPlayers.Count}, Renderers: {_playerLineRenderers.Count}");
+                 }
             }
 
             if (Time.frameCount % 300 == 0)
@@ -186,32 +221,81 @@ namespace REPO_UTILS
 
         public void ToggleGodMode()
         {
-            if (_playerHealth == null) return;
+            MelonLogger.Msg("[ToggleGodMode] Attempting to toggle...");
+            if (_playerHealth == null)
+            {
+                 MelonLogger.Error("[ToggleGodMode] Failed: _playerHealth component is null.");
+                 return;
+            }
+            MelonLogger.Msg($"[ToggleGodMode] _playerHealth component type: {_playerHealth.GetType().FullName}");
 
-            FieldInfo godModeField = _playerHealth.GetType().GetField("godMode",
-                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            FieldInfo godModeField = null;
+            try
+            {
+                 godModeField = _playerHealth.GetType().GetField("godMode",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+            }
+             catch (Exception ex)
+             {
+                 MelonLogger.Error($"[ToggleGodMode] Error finding 'godMode' field: {ex.Message}");
+                 return;
+             }
 
-            if (godModeField == null) return;
+            if (godModeField == null)
+            {
+                 MelonLogger.Error("[ToggleGodMode] Failed: 'godMode' field not found.");
+                 return;
+            }
+            MelonLogger.Msg("[ToggleGodMode] 'godMode' field found.");
 
-            bool currentGodMode = (bool)godModeField.GetValue(_playerHealth);
+            bool currentGodModeValue = false;
+            try
+            {
+                 currentGodModeValue = (bool)godModeField.GetValue(_playerHealth);
+                 MelonLogger.Msg($"[ToggleGodMode] Current 'godMode' field value: {currentGodModeValue}");
+            }
+            catch (Exception ex)
+            {
+                 MelonLogger.Error($"[ToggleGodMode] Error reading 'godMode' field value: {ex.Message}");
+                 return;
+            }
 
-            // Toggle god mode
-            _godModeToggled = !currentGodMode;
-            godModeField.SetValue(_playerHealth, _godModeToggled);
+            // Calculate the new state
+            bool targetGodModeState = !currentGodModeValue;
+            MelonLogger.Msg($"[ToggleGodMode] Target state: {targetGodModeState}");
+
+            // Set the field value
+            try
+            {
+                godModeField.SetValue(_playerHealth, targetGodModeState);
+                 MelonLogger.Msg($"[ToggleGodMode] Successfully set 'godMode' field to: {targetGodModeState}");
+            }
+            catch (Exception ex)
+            {
+                 MelonLogger.Error($"[ToggleGodMode] Error setting 'godMode' field value: {ex.Message}");
+                 // Even if setting fails, should we still update our internal state? Maybe not.
+                 return; 
+            }
+
+            // Update internal state ONLY if field was set successfully
+            _godModeToggled = targetGodModeState; 
+            MelonLogger.Msg($"[ToggleGodMode] Internal flag _godModeToggled set to: {_godModeToggled}");
 
             if (_godModeToggled)
             {
+                MelonLogger.Msg("[ToggleGodMode] Applying ENABLED effects...");
                 // Store original values and apply god mode effects
                 StoreOriginalValues();
                 ApplyGodModeEffects();
             }
             else
             {
+                MelonLogger.Msg("[ToggleGodMode] Applying DISABLED effects (restoring values)...");
                 // Restore original values
                 RestoreOriginalValues();
             }
 
-            MelonLogger.Msg($"God Mode: {(_godModeToggled ? "ENABLED" : "DISABLED")}");
+            MelonLogger.Msg($"[ToggleGodMode] God Mode toggle complete: {(_godModeToggled ? "ENABLED" : "DISABLED")}");
         }
 
         private void StoreOriginalValues()
@@ -566,15 +650,183 @@ namespace REPO_UTILS
 
         public void ReviveSelf()
         {
-             if (_playerHealth != null)
+            if (_playerAvatar != null && _playerHealth != null) // Need both Avatar and Health components
             {
-                CallHealMethod(_playerHealth, 100, false); // Assuming large heal amount revives
-                 MelonLogger.Msg("Attempted to revive self.");
+                 // Use IsPlayerAlive(-1) or a local check? Let's check local _playerHealth directly
+                 bool isAlive = false; // Default to false (dead) if checks fail, to allow revive attempt
+                 bool statusDetermined = false;
+                 MelonLogger.Msg("[ReviveSelf] Checking local player liveness...");
+
+                 try
+                 {
+                     FieldInfo deadField = _playerHealth.GetType().GetField("dead", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                     if (deadField != null && deadField.FieldType == typeof(bool))
+                     {
+                         bool deadValue = (bool)deadField.GetValue(_playerHealth);
+                         isAlive = !deadValue;
+                         statusDetermined = true;
+                         MelonLogger.Msg($"  -> Found 'dead' field ({deadField.FieldType}): {deadValue}. Player isAlive = {isAlive}");
+                     }
+                     else
+                     {
+                         MelonLogger.Msg("  -> 'dead' field not found or not boolean. Trying 'health' field...");
+                         // Fallback health check if 'dead' field not found
+                         FieldInfo healthField = _playerHealth.GetType().GetField("health", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+                         if (healthField != null)
+                         {
+                             object healthValueObj = healthField.GetValue(_playerHealth);
+                             // Try converting health to int, assuming health > 0 means alive
+                             try
+                             {
+                                 int currentHealth = Convert.ToInt32(healthValueObj);
+                                 isAlive = (currentHealth > 0);
+                                 statusDetermined = true;
+                                  MelonLogger.Msg($"  -> Found 'health' field ({healthField.FieldType}): {currentHealth}. Player isAlive = {isAlive}");
+                             }
+                             catch (Exception convEx)
+                             {
+                                  MelonLogger.Warning($"  -> Found 'health' field ({healthField.FieldType}) but failed to convert value '{healthValueObj}' to int: {convEx.Message}");
+                             }
+                         }
+                         else
+                         {
+                              MelonLogger.Warning("  -> 'health' field also not found.");
+                         }
+                     }
+                 }
+                 catch (Exception ex)
+                 {
+                      MelonLogger.Error($"[ReviveSelf] Error during liveness check: {ex.Message}. Assuming player might be dead.");
+                      // Keep isAlive = false (default)
+                 }
+
+                 if (!statusDetermined)
+                 {
+                     MelonLogger.Warning("[ReviveSelf] Could not determine player status from fields. Assuming player might be dead to allow revive attempt.");
+                     // isAlive remains false (default)
+                 }
+
+
+                if (!isAlive)
+                {
+                     MelonLogger.Msg("[ReviveSelf] Player determined to be dead. Proceeding with revive attempts...");
+                     MonoBehaviour playerAvatarComponent = _playerAvatar.GetComponent("PlayerAvatar") as MonoBehaviour;
+                     if (playerAvatarComponent == null)
+                     {
+                          MelonLogger.Error("Cannot ReviveSelf: Local PlayerAvatar component not found on _playerAvatar object.");
+                          // Try fallback health manipulation directly?
+                          TryReviveSelfHealthFallback(); 
+                          return;
+                     }
+
+                    MethodInfo reviveMethod = playerAvatarComponent.GetType().GetMethod("Revive",
+                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                    bool success = false;
+                    if (reviveMethod != null)
+                    {
+                        try
+                        {
+                            reviveMethod.Invoke(playerAvatarComponent, new object[] { true });
+                            MelonLogger.Msg("  Called Revive(true) successfully.");
+                            success = true;
+                        }
+                        catch (TargetParameterCountException)
+                        {
+                            try
+                            {
+                                 reviveMethod.Invoke(playerAvatarComponent, null);
+                                 MelonLogger.Msg("  Called Revive() successfully.");
+                                 success = true;
+                            }
+                            catch (Exception ex1) { MelonLogger.Warning($"  Revive() call failed: {ex1.Message}"); }
+                        }
+                        catch (Exception ex) { MelonLogger.Warning($"  Revive(true) call failed: {ex.Message}"); }
+                    }
+                    else { MelonLogger.Msg("  Revive method not found."); }
+
+                    if (!success)
+                    {
+                         MelonLogger.Msg("Attempting ReviveRPC on local PlayerAvatar...");
+                        MethodInfo reviveRPCMethod = playerAvatarComponent.GetType().GetMethod("ReviveRPC",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                        if (reviveRPCMethod != null)
+                        {
+                            try
+                            {
+                                reviveRPCMethod.Invoke(playerAvatarComponent, new object[] { true });
+                                MelonLogger.Msg("  Called ReviveRPC(true) successfully.");
+                                success = true;
+                            }
+                             catch (TargetParameterCountException)
+                            {
+                                 try
+                                 {
+                                     reviveRPCMethod.Invoke(playerAvatarComponent, null);
+                                     MelonLogger.Msg("  Called ReviveRPC() successfully.");
+                                     success = true;
+                                 }
+                                 catch (Exception ex1) { MelonLogger.Warning($"  ReviveRPC() call failed: {ex1.Message}"); }
+                            }
+                            catch (Exception ex) { MelonLogger.Warning($"  ReviveRPC(true) call failed: {ex.Message}"); }
+                        }
+                         else { MelonLogger.Msg("  ReviveRPC method not found."); }
+                    }
+
+                    // If Revive/RPC failed, try health fallback
+                    if (!success)
+                    {
+                        TryReviveSelfHealthFallback();
+                    }
+
+                    if (!success) // Check again after fallback
+                    {
+                         MelonLogger.Error("All self-revive attempts failed.");
+                    }
+                }
+                else
+                {
+                    MelonLogger.Msg("Cannot ReviveSelf: Player is already alive.");
+                }
+            }
+            else
+            {
+                 MelonLogger.Warning("Cannot ReviveSelf: PlayerAvatar or PlayerHealth component not found/cached.");
+            }
+        }
+
+        // Helper method for ReviveSelf health fallback
+        private void TryReviveSelfHealthFallback()
+        {
+             MelonLogger.Msg("Revive/ReviveRPC failed for self. Attempting health fallback...");
+            if (_playerHealth != null)
+            {
+                 FieldInfo healthField = _playerHealth.GetType().GetField("health",
+                    BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                if (healthField != null)
+                {
+                    try
+                    {
+                        healthField.SetValue(_playerHealth, 30); // Original fallback value
+                        MelonLogger.Msg("  Set local health field to 30 as fallback.");
+                        // Consider success = true; here if calling from ReviveSelf
+                    }
+                    catch (Exception ex)
+                    {
+                         MelonLogger.Error($"  Failed to set local health field as fallback: {ex.Message}");
+                    }
+                }
+                else
+                {
+                    MelonLogger.Warning("  Local health field not found for fallback.");
+                }
             }
              else
-            {
-                 MelonLogger.Warning("Cannot ReviveSelf: PlayerHealth component not found for local player.");
-            }
+             {
+                  MelonLogger.Warning("  Local PlayerHealth component null for fallback.");
+             }
         }
 
         public void HealOtherPlayer(int playerIndex)
@@ -600,22 +852,149 @@ namespace REPO_UTILS
 
         public void ReviveOtherPlayer(int playerIndex)
         {
-            if (playerIndex >= 0 && playerIndex < _playerHealthComponents.Count)
+            if (playerIndex >= 0 && playerIndex < _playerAvatarComponents.Count)
             {
-                MonoBehaviour targetHealth = _playerHealthComponents[playerIndex];
-                if (targetHealth != null)
+                MonoBehaviour playerAvatarComponent = _playerAvatarComponents[playerIndex];
+
+                if (playerAvatarComponent != null)
                 {
-                     CallHealMethod(targetHealth, 100, false);
-                     MelonLogger.Msg($"Attempted to revive player {playerIndex}.");
+                    // Check using the more robust IsPlayerAlive method
+                    if (!IsPlayerAlive(playerIndex))
+                    {
+                         MelonLogger.Msg($"Attempting Revive/ReviveRPC on PlayerAvatar for player {playerIndex}...");
+                        MethodInfo reviveMethod = playerAvatarComponent.GetType().GetMethod("Revive",
+                            BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                        bool success = false;
+                        if (reviveMethod != null)
+                        {
+                            try
+                            {
+                                // Try invoking with boolean argument first (common pattern)
+                                reviveMethod.Invoke(playerAvatarComponent, new object[] { true });
+                                MelonLogger.Msg("  Called Revive(true) successfully.");
+                                success = true;
+                            }
+                            catch (TargetParameterCountException)
+                            {
+                                // Try invoking with no arguments if boolean version failed
+                                try
+                                {
+                                     reviveMethod.Invoke(playerAvatarComponent, null);
+                                     MelonLogger.Msg("  Called Revive() successfully.");
+                                     success = true;
+                                }
+                                catch (Exception ex1)
+                                {
+                                     MelonLogger.Warning($"  Revive() call failed: {ex1.Message}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                MelonLogger.Warning($"  Revive(true) call failed: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            MelonLogger.Msg("  Revive method not found.");
+                        }
+
+                        // If Revive method failed or wasn't found, try ReviveRPC
+                        if (!success)
+                        {
+                             MelonLogger.Msg($"Attempting ReviveRPC on PlayerAvatar for player {playerIndex}...");
+                            MethodInfo reviveRPCMethod = playerAvatarComponent.GetType().GetMethod("ReviveRPC",
+                                BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                            if (reviveRPCMethod != null)
+                            {
+                                try
+                                {
+                                    // Try invoking with boolean argument first
+                                    reviveRPCMethod.Invoke(playerAvatarComponent, new object[] { true });
+                                    MelonLogger.Msg("  Called ReviveRPC(true) successfully.");
+                                    success = true;
+                                }
+                                catch (TargetParameterCountException)
+                                {
+                                     // Try invoking with no arguments if boolean version failed
+                                     try
+                                     {
+                                         reviveRPCMethod.Invoke(playerAvatarComponent, null);
+                                         MelonLogger.Msg("  Called ReviveRPC() successfully.");
+                                         success = true;
+                                     }
+                                     catch (Exception ex1)
+                                     {
+                                         MelonLogger.Warning($"  ReviveRPC() call failed: {ex1.Message}");
+                                     }
+                                }
+                                catch (Exception ex)
+                                {
+                                    MelonLogger.Warning($"  ReviveRPC(true) call failed: {ex.Message}");
+                                }
+                            }
+                             else
+                             {
+                                 MelonLogger.Msg("  ReviveRPC method not found.");
+                             }
+                        }
+
+                        // If both Revive and ReviveRPC failed, try the health fallback
+                        if (!success)
+                        {
+                            MelonLogger.Msg($"Revive/ReviveRPC failed for player {playerIndex}. Attempting health fallback...");
+                            if (playerIndex < _playerHealthComponents.Count)
+                            {
+                                MonoBehaviour playerHealthComponent = _playerHealthComponents[playerIndex];
+                                if (playerHealthComponent != null)
+                                {
+                                    FieldInfo healthField = playerHealthComponent.GetType().GetField("health",
+                                        BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+
+                                    if (healthField != null)
+                                    {
+                                        try
+                                        {
+                                            healthField.SetValue(playerHealthComponent, 30); // Original fallback value
+                                            MelonLogger.Msg("  Set health field to 30 as fallback.");
+                                            success = true;
+                                        }
+                                        catch (Exception ex)
+                                        {
+                                             MelonLogger.Error($"  Failed to set health field as fallback: {ex.Message}");
+                                        }
+                                    }
+                                    else
+                                    {
+                                        MelonLogger.Warning("  Health field not found for fallback.");
+                                    }
+                                }
+                                else
+                                {
+                                     MelonLogger.Warning("  PlayerHealth component null for fallback.");
+                                }
+                            }
+                        }
+
+                        if (!success)
+                        {
+                             MelonLogger.Error($"All revive attempts failed for player {playerIndex}.");
+                        }
+                    }
+                    else
+                    {
+                        MelonLogger.Msg($"Player {playerIndex} is already alive, cannot revive.");
+                    }
                 }
                 else
                 {
-                     MelonLogger.Warning($"Cannot ReviveOtherPlayer: PlayerHealth component not found for player index {playerIndex}.");
+                    MelonLogger.Warning($"Cannot ReviveOtherPlayer: PlayerAvatar component not found for player index {playerIndex}.");
                 }
             }
-             else
+            else
             {
-                 MelonLogger.Warning($"Cannot ReviveOtherPlayer: Invalid player index {playerIndex}.");
+                MelonLogger.Warning($"Cannot ReviveOtherPlayer: Invalid player index {playerIndex}.");
             }
         }
 
@@ -644,6 +1023,7 @@ namespace REPO_UTILS
         public void TogglePlayerESP()
         {
             _playerESPEnabled = !_playerESPEnabled;
+            MelonLogger.Msg($"[PlayerManager.TogglePlayerESP] Setting ESP Enabled to: {_playerESPEnabled}");
             SetPlayerESPVisibility(_playerESPEnabled);
         }
 
@@ -654,6 +1034,7 @@ namespace REPO_UTILS
 
         private void SetPlayerESPVisibility(bool isVisible)
         {
+            MelonLogger.Msg($"[PlayerManager.SetPlayerESPVisibility] Setting visibility to: {isVisible} for {_playerLineRenderers.Count} renderers.");
             foreach (var lineRenderer in _playerLineRenderers)
             {
                 if (lineRenderer != null)
@@ -663,10 +1044,16 @@ namespace REPO_UTILS
 
         private void CreateLineRendererForPlayer(Transform player)
         {
-            GameObject lineObject = new GameObject($"ESP_PlayerLine_{_otherPlayers.IndexOf(player)}");
+            int index = _otherPlayers.IndexOf(player);
+            string objName = $"ESP_PlayerLine_{index}";
+            MelonLogger.Msg($"[PlayerManager.CreateLineRendererForPlayer] Creating line object: {objName}");
+            GameObject lineObject = new GameObject(objName);
+            if (lineObject == null) { MelonLogger.Error("  Failed to create line GameObject!"); return; }
+
             _playerLineObjects.Add(lineObject);
 
             LineRenderer lineRenderer = lineObject.AddComponent<LineRenderer>();
+             if (lineRenderer == null) { MelonLogger.Error("  Failed to add LineRenderer component!"); return; }
             _playerLineRenderers.Add(lineRenderer);
 
             lineRenderer.startWidth = 0.01f;
@@ -675,6 +1062,8 @@ namespace REPO_UTILS
             lineRenderer.startColor = Color.blue;
             lineRenderer.endColor = Color.blue;
             lineRenderer.positionCount = 2;
+
+            MelonLogger.Msg($"  Line renderer created and added. Total renderers: {_playerLineRenderers.Count}");
         }
 
         private void DrawLineToTarget(Vector3 startPosition, Vector3 endPosition, LineRenderer lineRenderer)
@@ -688,6 +1077,7 @@ namespace REPO_UTILS
 
         private void ClearPlayerESP()
         {
+            MelonLogger.Msg("[PlayerManager.ClearPlayerESP] Clearing existing player lines...");
             foreach (var lineObject in _playerLineObjects)
             {
                 if (lineObject != null)
@@ -698,6 +1088,7 @@ namespace REPO_UTILS
 
             _playerLineObjects.Clear();
             _playerLineRenderers.Clear();
+             MelonLogger.Msg("  Player lines cleared.");
         }
 
         public bool IsPlayerAlive(int playerIndex)

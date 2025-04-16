@@ -40,10 +40,13 @@ namespace REPO_UTILS
 
         public void Initialize(Transform levelTransform)
         {
+            MelonLogger.Msg("[ItemManager.Initialize] Called.");
             _levelTransform = levelTransform;
+            if (_levelTransform == null) MelonLogger.Warning("  _levelTransform is NULL on Initialize!");
 
             FindItems();
             CreateLineRenderersForItems();
+            MelonLogger.Msg("[ItemManager.Initialize] Finished.");
         }
 
         public void Reset()
@@ -78,22 +81,30 @@ namespace REPO_UTILS
 
         private void FindItems()
         {
-            if (_levelTransform == null) return;
+            MelonLogger.Msg("[ItemManager.FindItems] Called.");
+            _items.Clear(); // Clear before finding
+
+            if (_levelTransform == null)
+            {
+                 MelonLogger.Warning("  Cannot find items: _levelTransform is null.");
+                 return;
+            }
 
             var valuableObjects = _levelTransform.GetComponentsInChildren<MonoBehaviour>()
                 .Where(mb => mb.GetType().Name == "ValuableObject")
                 .Select(mb => mb.transform)
                 .ToList();
 
-            MelonLogger.Msg($"Found {valuableObjects.Count} valuable items in the level");
+            MelonLogger.Msg($"[ItemManager.FindItems] Found {valuableObjects.Count} ValuableObject components under Level.");
 
             foreach (var item in valuableObjects)
             {
-                if (!_items.Contains(item))
+                // if (!_items.Contains(item)) // We cleared _items, so contains check is redundant
                 {
                     _items.Add(item);
                 }
             }
+            MelonLogger.Msg($"[ItemManager.FindItems] Finished. Added {_items.Count} items to list.");
         }
 
         private void UpdateItemList()
@@ -390,7 +401,7 @@ namespace REPO_UTILS
                     continue; // Skip if component not found
                 }
 
-                // Find the 'value' field
+                // --- Revert: Find and set the 'value' field directly ---
                 FieldInfo valueField = itemAttributes.GetType().GetField("value", flags);
                 if (valueField == null)
                 {
@@ -401,6 +412,7 @@ namespace REPO_UTILS
                 // Set the value to 1
                 try
                 {
+                    // Ensure the field is an int before setting
                     if (valueField.FieldType == typeof(int))
                     {
                         valueField.SetValue(itemAttributes, 1);
@@ -408,7 +420,7 @@ namespace REPO_UTILS
                     }
                     else
                     {
-                        // MelonLogger.Warning($"Value field on '{itemChild.name}' is not an int ({valueField.FieldType}). Skipping.");
+                         MelonLogger.Warning($"Value field on '{itemChild.name}' is not an int ({valueField.FieldType}). Skipping.");
                     }
                 }
                 catch (Exception ex)

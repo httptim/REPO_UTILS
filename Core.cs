@@ -31,6 +31,9 @@ namespace REPO_UTILS
         private Transform enemiesParent;
         private Transform levelTransform;
 
+        // Store reference to the coroutine handle (object for MelonCoroutines)
+        private object _findPlayerCoroutine = null; // Changed type from Coroutine to object
+
         #region MelonLoader Lifecycle Methods
 
         public override void OnApplicationStart()
@@ -48,30 +51,50 @@ namespace REPO_UTILS
 
         private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
         {
-            MelonLogger.Msg($"Scene loaded: {scene.name}");
-
+            MelonLogger.Msg($"===== [CORE] OnSceneLoaded - SCENE: {scene.name}, MODE: {mode} =====");
             // Reset all systems for the new scene
+            MelonLogger.Msg("[CORE] OnSceneLoaded: Calling ResetAllSystems...");
             ResetAllSystems();
+            MelonLogger.Msg("[CORE] OnSceneLoaded: Calling InitializeESP...");
             InitializeESP();
 
             // Subscribe GUI handler
+             MelonLogger.Msg("[CORE] OnSceneLoaded: Subscribing OnGUI...");
             MelonEvents.OnGUI.Unsubscribe(UIManager.DrawGUI);
             MelonEvents.OnGUI.Subscribe(UIManager.DrawGUI, 100);
 
             // Do NOT start the logger automatically
             // Logger.StartLogging(); -- Remove or comment out this line
+            MelonLogger.Msg("[CORE] OnSceneLoaded: Finished.");
         }
 
         private void OnSceneChanged(Scene oldScene, Scene newScene)
         {
-            MelonLogger.Msg($"Scene changed from {oldScene.name} to {newScene.name}");
-
+             MelonLogger.Msg($"===== [CORE] OnSceneChanged - FROM: {oldScene.name}, TO: {newScene.name} =====");
             // Clean up GUI subscription
+             MelonLogger.Msg("[CORE] OnSceneChanged: Unsubscribing OnGUI...");
             MelonEvents.OnGUI.Unsubscribe(UIManager.DrawGUI);
 
             // Reset and prepare for new scene
+            MelonLogger.Msg("[CORE] OnSceneChanged: Calling ResetAllSystems...");
             ResetAllSystems();
-            MelonCoroutines.Start(FindPlayerWithDelay());
+             // Stop existing coroutine? 
+             if (_findPlayerCoroutine != null)
+             {
+                  MelonLogger.Msg("[CORE] OnSceneChanged: Explicitly stopping previous FindPlayerWithDelay coroutine...");
+                  try
+                  {
+                       MelonCoroutines.Stop(_findPlayerCoroutine); // Use MelonCoroutines.Stop
+                  }
+                  catch (Exception ex)
+                  {
+                       MelonLogger.Warning($"[CORE] OnSceneChanged: Exception while stopping coroutine (likely already finished): {ex.GetType().Name} - {ex.Message}");
+                  }
+                  _findPlayerCoroutine = null;
+             }
+             MelonLogger.Msg("[CORE] OnSceneChanged: Starting FindPlayerWithDelay coroutine...");
+             _findPlayerCoroutine = MelonCoroutines.Start(FindPlayerWithDelay()); // Assign object handle
+             MelonLogger.Msg("[CORE] OnSceneChanged: Finished.");
         }
 
         public override void OnUpdate()
@@ -134,58 +157,106 @@ namespace REPO_UTILS
 
         private IEnumerator FindPlayerWithDelay()
         {
-            yield return new WaitForSeconds(3f);
+            MelonLogger.Msg("Starting player/level search coroutine...");
+            bool initialized = false;
+            int attempt = 0;
 
-            playerAvatar = GameObject.Find("PlayerAvatar(Clone)")?.transform;
-            if (playerAvatar == null)
+            // Keep trying until all essential objects are found
+            while (!initialized)
             {
-                MelonLogger.Msg("Could not find PlayerAvatar(Clone)");
-                yield break;
+                attempt++;
+                MelonLogger.Msg($"Initialization attempt #{attempt}...");
+
+                 // Reset references before each attempt?
+                 // playerAvatar = null; 
+                 // playerController = null;
+                 // enemiesParent = null;
+                 // levelTransform = null;
+                 // GameObject levelGenerator = null; // Reset local variable too
+
+                // --- Find Player --- 
+                if (playerAvatar == null)
+                {
+                    playerAvatar = GameObject.Find("PlayerAvatar(Clone)")?.transform;
+                }
+
+                if (playerAvatar == null)
+                {
+                    MelonLogger.Msg("PlayerAvatar(Clone) not found yet...");
+                    yield return new WaitForSeconds(1.5f); // Wait before next major attempt
+                    continue; // Restart the loop
+                }
+                // Found Player Avatar, now find controller
+                MelonLogger.Msg("   Found PlayerAvatar(Clone).");
+
+                if (playerController == null)
+                {
+                    playerController = playerAvatar.Find("Player Avatar Controller");
+                }
+
+                if (playerController == null)
+                {
+                    MelonLogger.Msg("   Player Avatar Controller not found yet (child of PlayerAvatar)...");
+                     playerAvatar = null; // Reset avatar if controller not found, might be incomplete object
+                    yield return new WaitForSeconds(1.0f); // Wait slightly less
+                    continue;
+                }
+                MelonLogger.Msg("   Found Player Avatar Controller.");
+
+                // Optional: Check child count if needed
+                // if (playerAvatar.childCount != 8) { ... yield return ... continue; }
+
+                // --- Find Level Generator and its Children --- 
+                GameObject levelGenerator = GameObject.Find("Level Generator");
+                if (levelGenerator == null)
+                {
+                    MelonLogger.Msg("Level Generator not found yet...");
+                    yield return new WaitForSeconds(1.5f);
+                    continue;
+                }
+                 MelonLogger.Msg("   Found Level Generator.");
+
+                if (enemiesParent == null)
+                {
+                     enemiesParent = levelGenerator.transform.Find("Enemies");
+                }
+
+                if (enemiesParent == null)
+                {
+                    MelonLogger.Msg("   Enemies transform not found yet (child of Level Generator)...");
+                    yield return new WaitForSeconds(1.0f);
+                    continue;
+                }
+                MelonLogger.Msg("   Found Enemies transform.");
+
+                if (levelTransform == null)
+                {
+                    levelTransform = levelGenerator.transform.Find("Level");
+                }
+
+                if (levelTransform == null)
+                {
+                    MelonLogger.Msg("   Level transform not found yet (child of Level Generator)...");
+                    yield return new WaitForSeconds(1.0f);
+                    continue;
+                }
+                 MelonLogger.Msg("   Found Level transform.");
+
+                // --- All Found - Proceed with Initialization --- 
+                 MelonLogger.Msg("All required objects found! Initializing managers...");
+
+                 // Initialize all managers with scene references
+                 PlayerManager.Initialize(playerAvatar, playerController);
+                 EnemyManager.Initialize(enemiesParent);
+                 ItemManager.Initialize(levelTransform);
+
+                 // Start logging player components for analysis - THIS IS THE IMPORTANT PART
+                 Logger.LogPlayerComponents(playerController);
+
+                 MelonLogger.Msg("ESP system initialized successfully after {attempt} attempts.");
+                 initialized = true; // Set flag to exit the loop
             }
-
-            playerController = playerAvatar.Find("Player Avatar Controller");
-            if (playerController == null)
-            {
-                MelonLogger.Msg("Could not find Player Avatar Controller");
-                yield break;
-            }
-
-            if (playerAvatar.childCount != 8)
-            {
-                MelonLogger.Msg($"Player avatar has {playerAvatar.childCount} children, expected 8");
-                yield break;
-            }
-
-            GameObject levelGenerator = GameObject.Find("Level Generator");
-            if (levelGenerator == null)
-            {
-                MelonLogger.Msg("Could not find Level Generator");
-                yield break;
-            }
-
-            enemiesParent = levelGenerator.transform.Find("Enemies");
-            if (enemiesParent == null)
-            {
-                MelonLogger.Msg("Could not find Enemies transform");
-                yield break;
-            }
-
-            levelTransform = levelGenerator.transform.Find("Level");
-            if (levelTransform == null)
-            {
-                MelonLogger.Msg("Could not find Level transform");
-                yield break;
-            }
-
-            // Initialize all managers with scene references
-            PlayerManager.Initialize(playerAvatar, playerController);
-            EnemyManager.Initialize(enemiesParent);
-            ItemManager.Initialize(levelTransform);
-
-            // Start logging player components for analysis - THIS IS THE IMPORTANT PART
-            Logger.LogPlayerComponents(playerController);
-
-            MelonLogger.Msg("ESP system initialized successfully");
+            // Coroutine finishes after successful initialization
         }
 
         #endregion
@@ -255,6 +326,44 @@ namespace REPO_UTILS
         public void CompleteExtractionPoints()
         {
             ItemManager.CompleteExtractionPoints(); // Delegate to ItemManager
+        }
+
+        // New method for manual refresh
+        public void ManualRefresh()
+        {
+            MelonLogger.Msg("===== [CORE] ManualRefresh Requested ====");
+
+            // 1. Stop existing initialization coroutine if running
+            if (_findPlayerCoroutine != null)
+            {
+                MelonLogger.Msg("[CORE] ManualRefresh: Stopping existing FindPlayerWithDelay coroutine...");
+                 try
+                 {
+                    MelonCoroutines.Stop(_findPlayerCoroutine); // Use MelonCoroutines.Stop
+                 }
+                 catch (Exception ex)
+                 {
+                     MelonLogger.Warning($"[CORE] ManualRefresh: Exception while stopping coroutine (likely already finished): {ex.GetType().Name} - {ex.Message}");
+                 }
+                _findPlayerCoroutine = null;
+            }
+            else
+            {
+                MelonLogger.Msg("[CORE] ManualRefresh: No existing FindPlayerWithDelay coroutine found to stop.");
+            }
+
+            // 2. Reset all systems (clears references and manager states)
+            MelonLogger.Msg("[CORE] ManualRefresh: Calling ResetAllSystems...");
+            ResetAllSystems(); // This implicitly calls ClearPlayerESP, ClearItemESP, ClearEnemyESP via manager Reset methods
+            MelonLogger.Msg("  -> ESP lines cleared as part of ResetAllSystems.");
+
+            // 3. Start the initialization coroutine again
+            // InitializeESP(); // Don't call this directly, let the coroutine handle manager init
+            MelonLogger.Msg("[CORE] ManualRefresh: Starting FindPlayerWithDelay coroutine...");
+            _findPlayerCoroutine = MelonCoroutines.Start(FindPlayerWithDelay()); // Assign object handle
+            MelonLogger.Msg("  -> FindPlayerWithDelay started, will recreate ESP lines upon finding objects.");
+
+            MelonLogger.Msg("===== [CORE] ManualRefresh Finished ====");
         }
 
         #endregion
